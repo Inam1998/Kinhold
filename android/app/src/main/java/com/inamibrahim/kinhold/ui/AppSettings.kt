@@ -23,6 +23,21 @@ object AppSettings {
         context?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putBoolean("show_hijri", value)?.apply()
     }
 
+    /** True in a debug build only. Ad placeholders and the developer Pro switch exist only there until a real ad service and billing are added. */
+    var debuggable = false
+        private set
+
+    /** Whether Pro is unlocked on this phone. Today only the developer switch sets it; real billing will replace that. */
+    var proUnlocked by mutableStateOf(false)
+        private set
+
+    /** Developer switch, debug builds only. */
+    fun chooseProUnlocked(value: Boolean) {
+        if (!debuggable) return
+        proUnlocked = value
+        context?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putBoolean("pro_unlocked", value)?.apply()
+    }
+
     var mode by mutableStateOf(ThemeMode.Dark)
         private set
 
@@ -34,6 +49,8 @@ object AppSettings {
         val prefs = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         mode = ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) } ?: ThemeMode.Dark
         showHijri = prefs.getBoolean("show_hijri", false)
+        debuggable = (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        proUnlocked = debuggable && prefs.getBoolean("pro_unlocked", false)
         Palette.accent = AccentChoice.entries.firstOrNull { it.name == prefs.getString(KEY_ACCENT, null) } ?: AccentChoice.Green
     }
 

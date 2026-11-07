@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { Lock, Relationship, Upcoming, Checks, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { Lock, Relationship, Upcoming, Checks, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Pro, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -307,6 +307,20 @@ object HelpGuide {
                 "Parents and children, spouses, and people of different sex are never offered as duplicates.",
                 "A person keeps at most four parents when joined, so an extra parent link from the removed entry is dropped.",
                 "Dates with only a year are compared by year, so a marriage and a birth in the same year are not flagged.",
+            ),
+        ),
+        HelpPage(
+            topic = HelpTopic.Pro,
+            title = "Kinhold Pro and ads",
+            summary = "What the paid version changes, and what is always free.",
+            sections = listOf(
+                HelpSection("The plan", "Kinhold is meant to be free with light ads, plus a one-time Pro purchase that removes them. There is no subscription and nothing renews."),
+                HelpSection("What stays free", "Everything that keeps your tree safe is never locked: saving and restoring backups, GEDCOM, sharing and merging, checks, the app lock and reminders."),
+                HelpSection("Where ads may and may not appear", "Ads never appear over the tree, while you edit a person or an event, or while you record. They are planned only for the More, Help, Upcoming and Backup screens."),
+            ),
+            limits = listOf(
+                "Neither ads nor buying Pro are in this version of the app yet, so there is nothing to buy and no ad is shown.",
+                "When ads are added, Kinhold will need permission to use the internet, and this guide, the Privacy page and the store listing will say so.",
             ),
         ),
         HelpPage(

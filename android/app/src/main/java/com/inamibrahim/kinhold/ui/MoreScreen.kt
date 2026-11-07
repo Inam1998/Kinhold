@@ -40,6 +40,7 @@ fun MoreScreen(items: List<MoreItem>, onBack: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (item in items) MoreRow(item.icon, item.tone, item.title, item.subtitle, item.onClick)
             }
+            AdSlot(com.inamibrahim.kinhold.model.AdPlacement.More, Modifier.padding(top = 12.dp))
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }

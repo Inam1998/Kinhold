@@ -305,6 +305,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 }
             }
 
+            AdSlot(com.inamibrahim.kinhold.model.AdPlacement.Backup, Modifier.padding(top = 12.dp))
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }

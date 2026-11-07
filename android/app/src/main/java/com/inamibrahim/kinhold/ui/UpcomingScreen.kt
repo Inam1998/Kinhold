@@ -143,6 +143,7 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                         }
                     }
                 }
+                item { AdSlot(com.inamibrahim.kinhold.model.AdPlacement.Upcoming, Modifier.padding(top = 8.dp)) }
                 item { Column(Modifier.padding(bottom = 8.dp)) {} }
             }
         }

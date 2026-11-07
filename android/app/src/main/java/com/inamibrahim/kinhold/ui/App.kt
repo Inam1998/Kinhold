@@ -81,6 +81,9 @@ sealed interface Screen {
     /** Birthdays, remembrance days and anniversaries coming up. */
     data object Upcoming : Screen
 
+    /** What Kinhold Pro is and what stays free. */
+    data object Pro : Screen
+
     /** How two people are related (the two people can be changed on the screen). */
     data class Related(val first: Int, val second: Int) : Screen
 
@@ -111,6 +114,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Tour -> "tour"
             Screen.Checks -> "checks"
             Screen.Upcoming -> "upcoming"
+            Screen.Pro -> "pro"
             is Screen.Related -> "relation|${s.first}|${s.second}"
             is Screen.LockSetup -> "lock|${s.mode.name}"
             is Screen.Person -> "person|${s.id}"
@@ -138,6 +142,8 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Related(p.getOrNull(1)?.toIntOrNull() ?: -1, p.getOrNull(2)?.toIntOrNull() ?: -1)
         } else if (text == "upcoming") {
             Screen.Upcoming
+        } else if (text == "pro") {
+            Screen.Pro
         } else if (text == "checks") {
             Screen.Checks
         } else if (text == "tour") {
@@ -255,7 +261,9 @@ private fun KinholdContent(vm: KinholdViewModel) {
             val status = vm.lastBackup?.let { "Last backup: ${describeAge(it, System.currentTimeMillis())}" } ?: "Not backed up yet"
             val firstFocus = family.people.firstOrNull { it.isMe }?.id ?: focusId
             MoreScreen(
-                items = listOf(
+                items = listOfNotNull(
+                    // Buying is not built yet, so the Pro page is offered in debug builds only.
+                    if (AppSettings.debuggable) MoreItem(Icons.Filled.Star, Tones.Amber, "Kinhold Pro", "What Pro changes and what is always free") { screen = Screen.Pro } else null,
                     MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Save, restore, merge and import") { screen = Screen.Backup },
                     MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = Screen.Related(firstFocus, focusId) },
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
@@ -271,6 +279,11 @@ private fun KinholdContent(vm: KinholdViewModel) {
         target is Screen.Help -> {
             BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
             HelpScreen(listScroll = scrolls.scroll("help"), onClose = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+        }
+
+        target is Screen.Pro -> {
+            BackHandler { screen = Screen.More }
+            ProScreen(scroll = scrolls.scroll("pro"), onBack = { screen = Screen.More })
         }
 
         target is Screen.Related -> {
@@ -557,7 +570,7 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
 private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour -> 2
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour, Screen.Pro -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -591,6 +604,7 @@ private fun Screen.key(): String = when (this) {
     is Screen.LockSetup -> "locksetup"
     is Screen.Related -> "relation"
     Screen.Upcoming -> "upcoming"
+    Screen.Pro -> "pro"
     Screen.Checks -> "checks"
     Screen.Tour -> "tour"
     is Screen.Person -> "person"

@@ -73,6 +73,7 @@ private fun look(topic: HelpTopic): Pair<ImageVector, Color> = when (topic) {
     HelpTopic.Restoring -> Icons.Filled.Refresh to Tones.Sky
     HelpTopic.Gedcom -> Icons.Filled.Send to Tones.Violet
     HelpTopic.Settings -> Icons.Filled.Settings to Tones.Sky
+    HelpTopic.Pro -> Icons.Filled.Star to Tones.Amber
     HelpTopic.Privacy -> Icons.Filled.Lock to Tones.Teal
     HelpTopic.Lock -> Icons.Filled.Lock to Tones.Mint
     HelpTopic.Checks -> Icons.Filled.Info to Tones.Teal
@@ -159,6 +160,7 @@ fun HelpScreen(listScroll: ScrollState, onClose: () -> Unit) {
                 } else {
                     PageContent(page, onBack = { open = null })
                 }
+                if (page == null) AdSlot(com.inamibrahim.kinhold.model.AdPlacement.HelpList, Modifier.padding(top = 4.dp))
                 Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
             }
         }
