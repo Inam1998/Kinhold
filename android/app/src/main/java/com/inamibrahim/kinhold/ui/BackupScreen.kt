@@ -58,6 +58,18 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
         }
     }
 
+    val gedcomSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            vm.exportGedcom(uri) { result ->
+                message = result.fold(
+                    { "GEDCOM file saved: ${plural(it)}." to false },
+                    { (it.message ?: "The GEDCOM file could not be saved.") to true },
+                )
+            }
+        }
+    }
+    val openGedcom = rememberGedcomImporter(vm, peopleCount) { text, isError -> message = text to isError }
+
     ScreenBackground {
         Column(
             Modifier
@@ -129,18 +141,45 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
                 }
             }
 
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Text("Share with other programs", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    Text(
+                        "GEDCOM is the standard file for family trees. Use it to bring a tree here from Ancestry, MyHeritage, " +
+                            "FamilySearch or another program, or to take yours there.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                    )
+                    Pill("Import a GEDCOM file", selected = false, onClick = openGedcom, modifier = Modifier.fillMaxWidth())
+                    Pill(
+                        "Save as a GEDCOM file",
+                        selected = false,
+                        onClick = { if (peopleCount > 0) gedcomSaver.launch("kinhold-${LocalDate.now()}.ged") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    Text(
+                        "GEDCOM keeps names, sex, birth and death years, places, notes and family links. Photos and other " +
+                            "details are not part of Kinhold yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+            }
+
             if (vm.hasSafetyCopy) {
                 AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.padding(24.dp)) {
-                        Text("Undo the last restore", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                        Text("Undo the last restore or import", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
                         Text(
-                            "Brings back the tree you had just before the last restore. The tree on this phone now becomes the saved copy.",
+                            "Brings back the tree you had just before the last restore or import. The tree on this phone now becomes the saved copy.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Palette.TextMuted,
                             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
                         )
                         Pill(
-                            "Undo last restore",
+                            "Undo the last restore or import",
                             selected = false,
                             onClick = {
                                 vm.undoRestore { result ->

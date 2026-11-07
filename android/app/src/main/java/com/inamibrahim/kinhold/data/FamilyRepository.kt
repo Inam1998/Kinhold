@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.Gedcom
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Sex
@@ -120,6 +121,23 @@ class FamilyRepository(
         for (p in data.people) db.insertWithId(p.id, p.toDraft())
         for ((child, parent) in data.parentLinks) db.insertLink(child, parent)
         for ((a, b) in data.partnerships) db.insertPartnership(a, b)
+    }
+
+    /** The whole tree as GEDCOM text, for other family tree programs. */
+    suspend fun exportGedcom(appVersion: String, exportedOn: String): String =
+        lock.withLock { Gedcom.write(_family.value, appVersion, exportedOn) }
+
+    /**
+     * Adds everyone in [data] to the tree as new people, keeping everyone already there. People already in the tree are
+     * not matched, so adding the same file twice makes duplicates. Like a restore, it first writes the safety copy, so
+     * [undoRestore] takes it back.
+     */
+    suspend fun addAll(data: BackupData) = changing { db ->
+        writeSafetyCopy(_family.value)
+        val newIds = HashMap<Int, Int>()
+        for (p in data.people) newIds[p.id] = db.insertPerson(p.toDraft())
+        for ((child, parent) in data.parentLinks) db.insertLink(newIds.getValue(child), newIds.getValue(parent))
+        for ((a, b) in data.partnerships) db.insertPartnership(newIds.getValue(a), newIds.getValue(b))
     }
 
     /** Whether a tree from before the last restore is kept. */

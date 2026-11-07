@@ -124,6 +124,7 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
         }
 
         family.size == 0 -> StartScreen(
+            vm = vm,
             onAddFirst = { screen = Screen.Form(null, null) },
             onSample = vm::addSampleFamily,
         )

@@ -12,6 +12,9 @@ import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.BackupException
 import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.Gedcom
+import com.inamibrahim.kinhold.model.GedcomException
+import com.inamibrahim.kinhold.model.GedcomResult
 import com.inamibrahim.kinhold.model.PersonDraft
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +23,9 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Holds the stored tree for the screens and runs changes off the main thread. */
 class KinholdViewModel(app: Application) : AndroidViewModel(app) {
@@ -102,6 +108,50 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
                     BackupCodec.decode(bytes.toString(Charsets.UTF_8))
                 }
             }
+            onResult(result)
+        }
+    }
+
+    /** Writes the whole tree as a GEDCOM file to the place the person chose. [onResult] gets the people saved. */
+    fun exportGedcom(uri: Uri, onResult: (Result<Int>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val app = getApplication<Application>()
+                val version = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: ""
+                val today = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH).format(LocalDate.now()).uppercase(Locale.ENGLISH)
+                val text = repo.exportGedcom(version, today)
+                val count = repo.family.value.size
+                withContext(Dispatchers.IO) {
+                    val out = app.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Could not open the file to write to.")
+                    out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                }
+                count
+            }
+            onResult(result)
+        }
+    }
+
+    /** Reads and checks a GEDCOM file without changing anything. The result is what it holds and what cannot be kept. */
+    fun readGedcom(uri: Uri, onResult: (Result<GedcomResult>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val input = getApplication<Application>().contentResolver.openInputStream(uri)
+                        ?: throw IOException("Could not open that file.")
+                    val bytes = input.use { it.readAtMost(MAX_BACKUP_BYTES) }
+                        ?: throw GedcomException("This file is too large to be a family tree.")
+                    Gedcom.read(bytes)
+                }
+            }
+            onResult(result)
+        }
+    }
+
+    /** Puts a GEDCOM file that [readGedcom] already checked into the tree: replacing it, or adding to it. */
+    fun importGedcom(data: BackupData, replace: Boolean, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { if (replace) repo.replaceAll(data) else repo.addAll(data) }
+            hasSafetyCopy = repo.hasSafetyCopy()
             onResult(result)
         }
     }

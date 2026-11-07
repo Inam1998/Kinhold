@@ -239,6 +239,47 @@ class FamilyRepositoryTest {
     }
 
     @Test
+    fun addingAnImportKeepsEveryoneAlreadyThereAndCanBeUndone() = runBlocking {
+        val repo = memoryRepo()
+        val mine = repo.addPerson(PersonDraft("Mine", "Own"))
+        repo.addPerson(PersonDraft("Mum"), Relation.ParentOf(mine))
+        // Ids in the file overlap the ids already in the tree, so they must be renumbered, not reused.
+        val data = BackupData(
+            people = listOf(Person(1, "Imported", "Parent", Sex.Male), Person(2, "Imported", "Child"), Person(3, "Imported", "Spouse", Sex.Female)),
+            parentLinks = listOf(2 to 1, 2 to 3),
+            partnerships = listOf(1 to 3),
+        )
+        repo.addAll(data)
+        val f = repo.family.value
+        assertEquals(5, f.size)
+        assertEquals("Mum", f.parentsOf(mine).single().given)
+        val child = f.people.single { it.given == "Imported" && it.surname == "Child" }
+        assertEquals(setOf("Parent", "Spouse"), f.parentsOf(child.id).map { it.surname }.toSet())
+        val parent = f.people.single { it.surname == "Parent" }
+        assertEquals(listOf("Spouse"), f.spousesOf(parent.id).map { it.surname })
+        assertTrue(repo.hasSafetyCopy())
+
+        repo.undoRestore()
+        assertEquals(setOf("Mine", "Mum"), repo.family.value.people.map { it.given }.toSet())
+    }
+
+    @Test
+    fun aGedcomExportReadBackAndRestoredMakesTheSameTree() = runBlocking {
+        val source = memoryRepo()
+        source.addSampleFamily(300)
+        val gedcom = source.exportGedcom("test", "1 JAN 2026")
+        val parsed = com.inamibrahim.kinhold.model.Gedcom.read(gedcom.toByteArray(Charsets.UTF_8))
+        val repo = memoryRepo()
+        repo.replaceAll(parsed.data)
+        val a = source.family.value
+        val b = repo.family.value
+        assertEquals(300, b.size)
+        assertEquals(a.people.map { it.name }.sorted(), b.people.map { it.name }.sorted())
+        assertEquals(a.parentLinks().size, b.parentLinks().size)
+        assertEquals(a.partnerships().size, b.partnerships().size)
+    }
+
+    @Test
     fun newPeopleAddedAfterARestoreDoNotReuseRestoredIds() = runBlocking {
         val repo = memoryRepo()
         repo.replaceAll(BackupData(listOf(Person(500, "High", "Id")), emptyList(), emptyList()))

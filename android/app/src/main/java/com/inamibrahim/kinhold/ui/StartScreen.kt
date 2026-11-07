@@ -15,14 +15,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.inamibrahim.kinhold.data.KinholdViewModel
 
 private val SampleSizes = listOf(60, 300, 1000, 3000)
 
 /** Shown while the tree has nobody in it. */
 @Composable
-fun StartScreen(onAddFirst: () -> Unit, onSample: (Int) -> Unit) {
+fun StartScreen(vm: KinholdViewModel, onAddFirst: () -> Unit, onSample: (Int) -> Unit) {
+    var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val openGedcom = rememberGedcomImporter(vm, currentPeople = 0) { text, isError -> message = text to isError }
     ScreenBackground {
         Column(
             Modifier
@@ -42,6 +49,23 @@ fun StartScreen(onAddFirst: () -> Unit, onSample: (Int) -> Unit) {
                         modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
                     )
                     PrimaryButton("Add the first person", onAddFirst, Modifier.fillMaxWidth())
+                    Pill("Import a GEDCOM file", selected = false, onClick = openGedcom, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                    Text(
+                        "Already have a tree in Ancestry, MyHeritage or another program? Export it as GEDCOM there and open it here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            }
+            message?.let { (text, isError) ->
+                AppCard(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp)) {
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isError) Palette.Danger else Palette.Accent,
+                        modifier = Modifier.padding(20.dp),
+                    )
                 }
             }
             Text(
