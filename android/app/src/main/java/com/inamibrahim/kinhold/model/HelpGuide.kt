@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { Lock, Relationship, Upcoming, Checks, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Pro, Privacy }
+enum class HelpTopic { Lock, Relationship, Upcoming, Checks, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Pro, Statistics, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -45,11 +45,11 @@ object HelpGuide {
                 HelpSection("Tap a card", "Tapping anyone makes them the focus, so you can walk the tree one person at a time."),
                 HelpSection("Drag and pinch", "Drag to move around and pinch to zoom. A quick flick keeps gliding for a moment."),
                 HelpSection("More relatives", "A green +3 under a card means three children are not drawn. A small arrow above a card means more ancestors exist. Tap that card to bring them into view."),
-                HelpSection("The bar at the bottom", "Me brings the tree back to you (see \"Adding and editing people\" for how to say who you are). Find searches by name and can jump to the oldest person. More holds Backup and sharing (saving, restoring, merging and importing), Settings and this Help guide. The round arrow button over the tree frames the focus person again."),
+                HelpSection("The bar at the bottom", "Me brings the tree back to you (see \"Adding and editing people\" for how to say who you are). Find searches by name, place or notes and can jump to the oldest person: a result that matched a place or a note says which. More holds Backup and sharing (saving, restoring, merging and importing), Tree statistics, Settings and this Help guide. The round arrow button over the tree frames the focus person again."),
             ),
             limits = listOf(
                 "The view shows three generations above the focus person and two below.",
-                "Find looks at names only, not places or notes.",
+                "Find ignores case and accents. Places and notes are searched from two typed letters, the places are the birth place, death place and address (not the places of events), and only the first 1,000 characters of each person's notes are searched.",
             ),
         ),
         HelpPage(
@@ -68,10 +68,13 @@ object HelpGuide {
                 HelpSection("Who you are", "Open More, then Settings, then Who are you, and choose your own card. The tree then marks you with a YOU badge, opens on you, and the Me button at the bottom brings the tree back to you from anywhere."),
                 HelpSection("Starting values", "A new child starts with their father's surname and a new spouse with the opposite sex. You can change both."),
                 HelpSection("Adoptive, foster and step parents", "When you add a parent or a child, choose how they are linked: Birth, Adoptive, Foster or Step. On a person's Details page, Parents lists each parent with the kind of link, and Change lets you correct it. Adoptive parents count as ancestors in How are we related, foster and step parents do not."),
+                HelpSection("Linking people already in the tree", "On a person's Details page choose Link person, then say whether the person you will pick is their parent, child or spouse, and pick them. The list leaves out anyone the link would make impossible: the person themselves, people already linked that way, a descendant as a parent, an ancestor as a child, and anyone who already has four parents. For a parent or child you also choose the kind of link. Two birth parents of one child are made a couple, as when you add a new parent."),
+                HelpSection("Removing a link", "On the Details page, Parents, Children and Spouses and partners each list the people linked, with Unlink beside each. Unlinking removes only the link: nobody is deleted and everyone keeps their other links. A partnership that has a marriage or other couple event recorded cannot be unlinked until that event is deleted in Edit, because the events belong to the partnership."),
                 HelpSection("Several marriages", "Choose + Spouse again to add more spouses. The person is drawn in the middle with their spouses on both sides, and each couple's children hang from their own line. When you add a child to someone with several spouses, you are asked who the other parent is."),
             ),
             limits = listOf(
                 "Different people can share a name. Find shows whose child each one is.",
+                "Linking works one link at a time: linking a child to one parent does not also link their other parent, and a sibling is made by linking the same parents. There is no undo button for a link, but Unlink removes it again (a copy of the tree is only kept for restores, imports and merges).",
                 "Spouses are placed by marriage date where you have recorded one, then by birth year, then by the order they were added.",
                 "Kinhold asks for no permission to call or message: it only hands the number to your phone's apps. WhatsApp needs the number with its country code, such as +92, and only works if WhatsApp is installed.",
                 "A pin is two numbers saved by you. Kinhold does not look addresses up, show a map inside the app or work out distances, and short Google links (maps.app.goo.gl) cannot be read: open them first and copy the numbers.",
@@ -90,14 +93,16 @@ object HelpGuide {
                 HelpSection("Adding an event", "Choose Edit on a person, then + Add an event under Events. Tap What happened to pick from the list (baptism, burial, job, move, military service, or Other with your own name), then set a date with the date picker, a place and notes. Every part of the date is optional."),
                 HelpSection("Marriage and divorce", "Under each spouse's name in Edit is a place for events of that couple. Add a marriage with its date and place, and a divorce or annulment if there was one. Marriage dates put spouses in order in the tree, and a divorce stops a former partner being shown as a step-parent."),
                 HelpSection("Sources", "A source is a note of where something came from: a book, a certificate, a website, with the page or entry. Add them to an event, or to the person in general, at the bottom of the Edit screen."),
-                HelpSection("Seeing it all", "Choose Details on the card under the tree to see dates, events, marriages and sources of the focus person on one page."),
+                HelpSection("Seeing it all", "Choose Details on the card under the tree to see the focus person's contact details, notes, timeline and sources on one page."),
+                HelpSection("The timeline", "On the Details page the timeline puts a person's life in date order: birth, each event, marriages and other couple events, the births of their children, and death, with how old they were at each. Events with no date come after the dated ones, an undated birth comes first and an undated death last. Burial, cremation and probate are listed after the death when the dates are the same. Nothing extra is stored; it is built from what you recorded."),
                 HelpSection("Keeping it safe", "Events and sources are part of backups, GEDCOM files, Undo after a delete and Undo of a restore."),
             ),
             limits = listOf(
                 "A person or a couple can have up to 500 events, and each event or person up to 50 sources. Long text is cut: about 5,000 characters in a note.",
                 "Sources are plain text. You cannot attach a scan, photo or document to them.",
                 "Dates cannot say \"about\" or \"between\"; put that in the notes.",
-                "Events are shown on the Details page and in Edit, not on the tree cards. Birth and death stay as the fields on the form, and appear on the Details page beside the events.",
+                "Events are shown on the Details page and in Edit, not on the tree cards. Birth and death stay as the fields on the form, and appear in the timeline on the Details page beside the events.",
+                "An age in the timeline is exact only when both the birth date and the event date have a day and month; otherwise it says About, and it can be a year out. A child with no birth year is not shown in the timeline (they are still listed under Children).",
                 "Events are ordered by date; events with no date come last.",
                 "Only marriage, divorce and annulment change how the tree looks. A partner who died is not treated as an ended marriage.",
             ),
@@ -321,6 +326,21 @@ object HelpGuide {
             limits = listOf(
                 "Neither ads nor buying Pro are in this version of the app yet, so there is nothing to buy and no ad is shown.",
                 "When ads are added, Kinhold will need permission to use the internet, and this guide, the Privacy page and the store listing will say so.",
+            ),
+        ),
+        HelpPage(
+            topic = HelpTopic.Statistics,
+            title = "Tree statistics",
+            summary = "Counts and records about the whole tree.",
+            sections = listOf(
+                HelpSection("Opening it", "Open More, then Tree statistics. It shows how many people there are (men, women, may be alive, died), couples, how many generations deep the tree goes, people with a photo and people with no dates, the earliest and most recent birth, the longest life, the person with the most children, the average lifespan, the commonest surnames and places, and births by decade. Tap a named person to see them on the tree."),
+                HelpSection("How it is worked out", "Everything is counted from what you have recorded when the screen opens, on the phone, and nothing is stored or sent anywhere."),
+            ),
+            limits = listOf(
+                "Someone with no birth year is left out of the decades, the earliest and most recent births and the lifespans. A lifespan needs both years, and a gap over 120 years is ignored as a mistake.",
+                "May be alive means no death recorded and born in the last 110 years. It is a guess, not a fact.",
+                "Places are counted exactly as typed, so \"Lahore\" and \"Lahore, Pakistan\" count separately, and only birth and death places are counted, not the places of events.",
+                "Generations is the longest chain of recorded parents, so a tree of unconnected families shows the deepest one, not the total.",
             ),
         ),
         HelpPage(

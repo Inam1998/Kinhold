@@ -168,9 +168,13 @@ private fun Swatch(choice: AccentChoice, selected: Boolean, onClick: () -> Unit)
 
 /** A search box and the matching people, to pick which card is you. */
 @Composable
-fun PersonPickerDialog(family: Family, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+fun PersonPickerDialog(family: Family, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit, exclude: Set<Int> = emptySet()) {
     var query by rememberSaveable { mutableStateOf("") }
-    val results = remember(family, query) { if (query.isBlank()) family.people.sortedBy { it.name }.take(30) else family.search(query) }
+    val results = remember(family, query, exclude) {
+        // Anyone in [exclude] is left out before the list is cut to 30, so the list is never short because of them.
+        if (query.isBlank()) family.people.asSequence().filter { it.id !in exclude }.sortedBy { it.name }.take(30).toList()
+        else family.search(query, limit = 200).filter { it.id !in exclude }.take(30)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.Surface,
@@ -179,6 +183,7 @@ fun PersonPickerDialog(family: Family, title: String, onPick: (Int) -> Unit, onD
         text = {
             Column {
                 Field("Search by name", query, { query = it }, Modifier.fillMaxWidth())
+                if (results.isEmpty()) Text("No one to choose.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 12.dp, start = 4.dp))
                 LazyColumn(Modifier.heightIn(max = 320.dp).padding(top = 8.dp)) {
                     items(results, key = { it.id }) { p ->
                         Row(

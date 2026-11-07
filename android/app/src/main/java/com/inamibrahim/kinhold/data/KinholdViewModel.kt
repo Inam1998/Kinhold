@@ -138,6 +138,23 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Links two people already in the tree; the result holds the reason in plain words if the rules refuse it. */
+    fun linkExisting(personId: Int, otherId: Int, type: com.inamibrahim.kinhold.model.LinkType, kind: com.inamibrahim.kinhold.model.LinkKind, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onResult(runCatching { repo.linkExisting(personId, otherId, type, kind) }) }
+    }
+
+    fun unlinkParent(child: Int, parent: Int, onDone: () -> Unit) {
+        viewModelScope.launch {
+            repo.unlinkParent(child, parent)
+            onDone()
+        }
+    }
+
+    /** Reports false when the couple has events, which must be removed first. */
+    fun unlinkPartners(a: Int, b: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch { onResult(repo.unlinkPartners(a, b)) }
+    }
+
     fun setLinkKind(child: Int, parent: Int, kind: com.inamibrahim.kinhold.model.LinkKind) {
         viewModelScope.launch { repo.setLinkKind(child, parent, kind) }
     }

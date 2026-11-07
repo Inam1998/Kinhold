@@ -15,6 +15,8 @@ import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.GeoPin
 import com.inamibrahim.kinhold.model.LinkKind
 import com.inamibrahim.kinhold.model.Limits
+import com.inamibrahim.kinhold.model.LinkRules
+import com.inamibrahim.kinhold.model.LinkType
 import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Merge
 import com.inamibrahim.kinhold.model.MergeField
@@ -117,6 +119,48 @@ class FamilyRepository(
         }
         db.putDetails(id, details)
         id
+    }
+
+    /**
+     * Links two people already in the tree: [otherId] becomes [type] of [personId]. The rules in [LinkRules] are checked
+     * again inside the change against the tree as it is now, so a link that would make something impossible is refused
+     * with a message and nothing changes.
+     */
+    suspend fun linkExisting(personId: Int, otherId: Int, type: LinkType, kind: LinkKind = LinkKind.Birth) = changing { db ->
+        LinkRules.problem(_family.value, personId, otherId, type)?.let { throw IllegalArgumentException(it) }
+        when (type) {
+            LinkType.Parent -> {
+                val others = db.parentsOf(personId)
+                db.insertLink(child = personId, parent = otherId, kind = kind)
+                // The same as adding a new parent: two birth parents of one child are made a couple.
+                if (kind == LinkKind.Birth && others.size == 1 && db.linkKind(personId, others[0]) == LinkKind.Birth) db.insertPartnership(otherId, others[0])
+            }
+            LinkType.Child -> db.insertLink(child = otherId, parent = personId, kind = kind)
+            LinkType.Spouse -> db.insertPartnership(personId, otherId)
+        }
+        Unit
+    }
+
+    /** Removes the link between a child and one parent. Neither person is deleted. */
+    suspend fun unlinkParent(child: Int, parent: Int) = changing { db ->
+        db.delete("parent_link", "child_id = ? AND parent_id = ?", arrayOf(child.toString(), parent.toString()))
+        Unit
+    }
+
+    /**
+     * Removes the partnership between two people. A partnership that has marriage or other couple events cannot be removed here,
+     * because the events would be deleted with it; the events are removed in Edit first. Returns false when it was refused.
+     */
+    suspend fun unlinkPartners(a: Int, b: Int): Boolean = changing { db ->
+        val lo = minOf(a, b).toString()
+        val hi = maxOf(a, b).toString()
+        val hasEvents = db.rawQuery("SELECT 1 FROM event WHERE a_id = ? AND b_id = ? LIMIT 1", arrayOf(lo, hi)).use { it.moveToFirst() }
+        if (hasEvents) {
+            false
+        } else {
+            db.delete("partnership", "a_id = ? AND b_id = ?", arrayOf(lo, hi))
+            true
+        }
     }
 
     /** Changes how a child is linked to a parent (birth, adoptive, foster or step). */

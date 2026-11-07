@@ -74,6 +74,7 @@ private fun look(topic: HelpTopic): Pair<ImageVector, Color> = when (topic) {
     HelpTopic.Gedcom -> Icons.Filled.Send to Tones.Violet
     HelpTopic.Settings -> Icons.Filled.Settings to Tones.Sky
     HelpTopic.Pro -> Icons.Filled.Star to Tones.Amber
+    HelpTopic.Statistics -> Icons.Filled.Info to Tones.Sky
     HelpTopic.Privacy -> Icons.Filled.Lock to Tones.Teal
     HelpTopic.Lock -> Icons.Filled.Lock to Tones.Mint
     HelpTopic.Checks -> Icons.Filled.Info to Tones.Teal

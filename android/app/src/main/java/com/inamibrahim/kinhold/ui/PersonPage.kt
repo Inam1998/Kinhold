@@ -2,6 +2,10 @@ package com.inamibrahim.kinhold.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +28,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.inamibrahim.kinhold.model.LinkRules
+import com.inamibrahim.kinhold.model.LinkType
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
@@ -54,6 +65,8 @@ private sealed interface PageItem {
 
     data class EventItem(val event: Event) : PageItem
 
+    data class TimelineItem(val entry: com.inamibrahim.kinhold.model.TimelineEntry) : PageItem
+
     data class SourceItem(val source: Source) : PageItem
 
     data class Note(val text: String) : PageItem
@@ -78,14 +91,22 @@ fun PersonPageScreen(
     val details by produceState<PersonDetails?>(null, family, person.id) { value = loadDetails(person.id) }
     val items = buildItems(family, person, details)
     var changingParent by remember { mutableStateOf<Person?>(null) }
+    // Linking someone who is already in the tree: first how, then who, then (for parents and children) what kind of link.
+    var choosingLinkType by rememberSaveable { mutableStateOf(false) }
+    var linkType by rememberSaveable { mutableStateOf<String?>(null) }
+    var linkOther by rememberSaveable { mutableStateOf<Int?>(null) }
+    var removing by remember { mutableStateOf<RemoveLink?>(null) }
+    var linkNotice by remember { mutableStateOf<String?>(null) }
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
             ScreenHeader("Person", person.name, Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), onBack = onBack)
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
+                ActionTile("Link person", Icons.Filled.Add, { linkNotice = null; choosingLinkType = true }, Modifier.weight(1f), tone = Tones.Violet)
                 ActionTile("Share branch", Icons.Filled.Share, onShare, Modifier.weight(1f), tone = Tones.Teal)
             }
+            linkNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Accent, modifier = Modifier.padding(start = 24.dp, end = 20.dp, bottom = 4.dp)) }
             val context = LocalContext.current
             val pin = if (person.lat != null && person.lng != null) GeoPin(person.lat, person.lng) else null
             val canCall = person.phone.isNotBlank()
@@ -135,20 +156,25 @@ fun PersonPageScreen(
                 val parentList = family.parentsOf(person.id)
                 if (parentList.isNotEmpty()) {
                     item {
-                        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Parents", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
-                            for (parent in parentList) {
-                                AppCard(Modifier.fillMaxWidth()) {
-                                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(parent.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-                                            Text(family.kindOf(person.id, parent.id).label, style = MaterialTheme.typography.bodySmall, color = Tones.Rose)
-                                        }
-                                        DialogButton("Change", { changingParent = parent }, kind = ButtonKind.Neutral)
-                                    }
-                                }
-                            }
-                        }
+                        LinkBlock("Parents", parentList.map { parent ->
+                            LinkRowData(parent.name, listOfNotNull(family.kindOf(person.id, parent.id).label, parent.years().ifEmpty { null }).joinToString("  ·  "), { changingParent = parent }) { removing = RemoveLink(person.id, parent.id, isPartner = false) }
+                        })
+                    }
+                }
+                val childList = family.childrenOf(person.id)
+                if (childList.isNotEmpty()) {
+                    item {
+                        LinkBlock("Children", childList.map { child ->
+                            LinkRowData(child.name, listOfNotNull(childLabel(family.kindOf(child.id, person.id)), child.years().ifEmpty { null }).joinToString("  ·  "), null) { removing = RemoveLink(child.id, person.id, isPartner = false) }
+                        })
+                    }
+                }
+                val spouseList = family.spousesInOrder(person.id)
+                if (spouseList.isNotEmpty()) {
+                    item {
+                        LinkBlock("Spouses and partners", spouseList.map { spouse ->
+                            LinkRowData(spouse.name, listOfNotNull(if (family.partnershipEnded(person.id, spouse.id)) "Ended" else null, spouse.years().ifEmpty { null }).joinToString("  ·  ").ifEmpty { null }, null) { removing = RemoveLink(person.id, spouse.id, isPartner = true) }
+                        })
                     }
                 }
                 items(items) { item ->
@@ -166,6 +192,7 @@ fun PersonPageScreen(
                         is PageItem.Text -> Text(item.text, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(horizontal = 4.dp))
                         is PageItem.Note -> Text(item.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.padding(horizontal = 4.dp))
                         is PageItem.EventItem -> EventRow(item.event, onClick = null)
+                        is PageItem.TimelineItem -> TimelineRow(item.entry)
                         is PageItem.SourceItem -> Column(Modifier.padding(horizontal = 4.dp)) {
                             Text(item.source.title.ifBlank { "Untitled source" }, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                             if (item.source.citation.isNotBlank()) Text(item.source.citation, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
@@ -180,21 +207,173 @@ fun PersonPageScreen(
     changingParent?.let { parent ->
         LinkKindDialog(person, parent, family.kindOf(person.id, parent.id), { vm.setLinkKind(person.id, parent.id, it); changingParent = null }, { changingParent = null })
     }
+
+    fun finishLink(otherId: Int, type: LinkType, kind: com.inamibrahim.kinhold.model.LinkKind) {
+        vm.linkExisting(person.id, otherId, type, kind) { result ->
+            val other = if (otherId in family) family.person(otherId).nameWithYears() else "That person"
+            linkNotice = result.fold(
+                {
+                    when (type) {
+                        LinkType.Parent -> "$other is now a parent of ${person.name}."
+                        LinkType.Child -> "$other is now a child of ${person.name}."
+                        LinkType.Spouse -> "$other and ${person.name} are now partners."
+                    }
+                },
+                { it.message ?: "They could not be linked." },
+            )
+        }
+        linkType = null
+        linkOther = null
+    }
+
+    if (choosingLinkType) {
+        LinkTypeDialog(person, { t -> choosingLinkType = false; linkType = t.name }, { choosingLinkType = false })
+    }
+    val type = linkType?.let { n -> LinkType.entries.firstOrNull { it.name == n } }
+    val other = linkOther?.takeIf { it in family }
+    if (type != null && other == null) {
+        PersonPickerDialog(
+            family = family,
+            title = "Who is ${when (type) { LinkType.Parent -> "a parent"; LinkType.Child -> "a child"; LinkType.Spouse -> "a spouse or partner" }} of ${person.name}?",
+            onPick = { id -> if (type == LinkType.Spouse) finishLink(id, type, com.inamibrahim.kinhold.model.LinkKind.Birth) else linkOther = id },
+            onDismiss = { linkType = null },
+            exclude = remember(family, person.id, type) { LinkRules.excluded(family, person.id, type) },
+        )
+    }
+    if (type != null && other != null) {
+        // Which kind of parent link it is: for a parent the chosen person is the parent, for a child the chosen person is the child.
+        val child = if (type == LinkType.Parent) person else family.person(other)
+        val parent = if (type == LinkType.Parent) family.person(other) else person
+        LinkKindDialog(child, parent, com.inamibrahim.kinhold.model.LinkKind.Birth, { finishLink(other, type, it) }, { linkType = null; linkOther = null })
+    }
+
+    removing?.let { r ->
+        val a = if (r.first in family) family.person(r.first).name else "Someone"
+        val b = if (r.second in family) family.person(r.second).name else "someone"
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { removing = null },
+            containerColor = Palette.Surface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            title = { Text("Remove this link?", color = Palette.Text) },
+            text = {
+                Text(
+                    if (r.isPartner) "$a and $b will no longer be partners. Neither of them is deleted. If a marriage or other event is recorded for them, the link cannot be removed until that event is deleted in Edit."
+                    else "$b will no longer be recorded as a parent of $a. Neither of them is deleted, and both keep their other links.",
+                    color = Palette.TextMuted,
+                )
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DialogButton("Cancel", { removing = null }, kind = ButtonKind.Neutral)
+                    DialogButton(
+                        "Remove link",
+                        {
+                            removing = null
+                            if (r.isPartner) {
+                                vm.unlinkPartners(r.first, r.second) { ok -> linkNotice = if (ok) "The link was removed." else "$a and $b have a marriage or other event recorded. Delete it in Edit first, then remove the link." }
+                            } else {
+                                vm.unlinkParent(r.first, r.second) { linkNotice = "The link was removed." }
+                            }
+                        },
+                        kind = ButtonKind.Danger,
+                    )
+                }
+            },
+        )
+    }
+}
+
+/** A link to remove: for a parent link [first] is the child and [second] the parent; for a partnership they are the two partners. */
+/** One line of the timeline: the date on the left, and what happened, where, how old they were and how many sources on the right. */
+@Composable
+private fun TimelineRow(entry: com.inamibrahim.kinhold.model.TimelineEntry) {
+    val tone = when (entry.kind) {
+        com.inamibrahim.kinhold.model.TimelineKind.Birth -> Tones.Mint
+        com.inamibrahim.kinhold.model.TimelineKind.Death -> Tones.Violet
+        com.inamibrahim.kinhold.model.TimelineKind.Marriage -> Tones.Rose
+        com.inamibrahim.kinhold.model.TimelineKind.Child -> Tones.Sky
+        com.inamibrahim.kinhold.model.TimelineKind.Event -> Tones.Amber
+    }
+    val hijri = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.describe(entry.date)?.let { " ($it)" }.orEmpty() else ""
+    val date = entry.date.text().ifEmpty { "No date" } + hijri
+    Row(
+        Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(Palette.SurfaceHigh).padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.padding(top = 5.dp).size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(tone))
+        Column(Modifier.weight(1f)) {
+            Text(date, style = MaterialTheme.typography.labelMedium, color = tone)
+            Text(entry.title, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+            if (entry.place.isNotBlank()) Text(entry.place, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+            if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            val extra = listOfNotNull(entry.age.ifEmpty { null }, if (entry.sources > 0) (if (entry.sources == 1) "1 source" else "${entry.sources} sources") else null).joinToString("  ·  ")
+            if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.labelMedium, color = Palette.Accent, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+/** The name with the years in brackets, so two people with one name can be told apart. */
+private fun Person.nameWithYears(): String = if (years().isEmpty()) name else "$name (${years()})"
+
+private class RemoveLink(val first: Int, val second: Int, val isPartner: Boolean)
+
+private class LinkRowData(val name: String, val subtitle: String?, val onChange: (() -> Unit)?, val onRemove: () -> Unit)
+
+private fun childLabel(kind: com.inamibrahim.kinhold.model.LinkKind): String = when (kind) {
+    com.inamibrahim.kinhold.model.LinkKind.Birth -> "Birth child"
+    com.inamibrahim.kinhold.model.LinkKind.Adopted -> "Adopted child"
+    com.inamibrahim.kinhold.model.LinkKind.Foster -> "Foster child"
+    com.inamibrahim.kinhold.model.LinkKind.Step -> "Stepchild"
+}
+
+/** A heading and one card per linked person, each with its buttons. */
+@Composable
+private fun LinkBlock(heading: String, rows: List<LinkRowData>) {
+    Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(heading, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
+        for (row in rows) {
+            AppCard(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                        row.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Tones.Rose) }
+                    }
+                    row.onChange?.let { DialogButton("Change", it, kind = ButtonKind.Neutral) }
+                    DialogButton("Unlink", row.onRemove, kind = ButtonKind.Neutral)
+                }
+            }
+        }
+    }
+}
+
+/** How the person to be linked relates to [person]: parent, child or spouse. */
+@Composable
+private fun LinkTypeDialog(person: Person, onPick: (LinkType) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.Surface,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+        title = { Text("Link someone already in the tree", color = Palette.Text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choose who they are to ${person.name}. You pick the person next.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+                DialogButton("A parent of ${person.name}", { onPick(LinkType.Parent) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.KeyboardArrowUp)
+                DialogButton("A child of ${person.name}", { onPick(LinkType.Child) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.KeyboardArrowDown)
+                DialogButton("A spouse or partner", { onPick(LinkType.Spouse) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.Favorite)
+            }
+        },
+        confirmButton = { DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral) },
+    )
 }
 
 private fun buildItems(family: Family, person: Person, details: PersonDetails?): List<PageItem> {
     val out = ArrayList<PageItem>()
-    out += PageItem.Heading("Life")
-    fun withHijri(d: com.inamibrahim.kinhold.model.PartialDate) = d.text() + (if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.describe(d)?.let { " ($it)" }.orEmpty() else "")
-    val born = listOf(withHijri(person.birthDate), person.birthPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
-    val died = listOf(withHijri(person.deathDate), person.deathPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
-    if (born.isNotEmpty()) out += PageItem.Line("Born", born)
-    if (died.isNotEmpty()) out += PageItem.Line("Died", died)
+    // Birth and death are part of the timeline below; this heading is only for how to reach the person.
+    if (person.phone.isNotBlank() || person.email.isNotBlank() || person.address.isNotBlank() || (person.lat != null && person.lng != null)) out += PageItem.Heading("Contact")
     if (person.phone.isNotBlank()) out += PageItem.Line("Phone", person.phone)
     if (person.email.isNotBlank()) out += PageItem.Line("Email", person.email)
     if (person.address.isNotBlank()) out += PageItem.Line("Address", person.address)
     if (person.lat != null && person.lng != null) out += PageItem.Line("Map pin", GeoPin(person.lat, person.lng).text())
-    if (born.isEmpty() && died.isEmpty()) out += PageItem.Text("No birth or death recorded.")
     if (person.notes.isNotBlank()) {
         out += PageItem.Heading("Notes")
         out += PageItem.Note(person.notes)
@@ -212,16 +391,10 @@ private fun buildItems(family: Family, person: Person, details: PersonDetails?):
         out += PageItem.Heading("More about ${person.name}")
         for (f in details.fields) out += PageItem.Line(f.label.ifBlank { "Note" }, f.value)
     }
-    out += PageItem.Heading("Events")
-    if (details.events.isEmpty()) out += PageItem.Text("No events yet. Choose Edit to add baptism, work, moves and more.")
-    for (e in details.events) out += PageItem.EventItem(e)
-    for (spouse in family.spousesInOrder(person.id)) {
-        val list = details.coupleEvents[spouse.id].orEmpty()
-        val ended = family.partnershipEnded(person.id, spouse.id)
-        out += PageItem.Heading("With ${spouse.name}${if (ended) " (ended)" else ""}")
-        if (list.isEmpty()) out += PageItem.Text("No marriage date or place recorded.")
-        for (e in list) out += PageItem.EventItem(e)
-    }
+    out += PageItem.Heading("Timeline")
+    val timeline = com.inamibrahim.kinhold.model.Timeline.of(family, person, details)
+    if (timeline.isEmpty()) out += PageItem.Text("Nothing recorded yet. Choose Edit to add dates, places, baptism, work, moves and more.")
+    for (t in timeline) out += PageItem.TimelineItem(t)
     if (details.sources.isNotEmpty()) {
         out += PageItem.Heading("Sources")
         for (s in details.sources) out += PageItem.SourceItem(s)
@@ -236,7 +409,7 @@ private fun LinkKindDialog(child: Person, parent: Person, current: com.inamibrah
         onDismissRequest = onDismiss,
         containerColor = Palette.Surface,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-        title = { Text("${parent.name} is ${child.name}'s…", color = Palette.Text) },
+        title = { Text("${parent.nameWithYears()} is ${child.nameWithYears()}'s…", color = Palette.Text) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (k in com.inamibrahim.kinhold.model.LinkKind.entries) {

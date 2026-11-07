@@ -394,7 +394,12 @@ private fun plural(n: Int, one: String, many: String = one + "s"): String = "$n 
 @Composable
 private fun SearchPanel(family: Family, onPick: (Person) -> Unit, onOldest: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
-    val results = remember(family, query) { family.search(query) }
+    // The text to search is folded once, off the main thread, when the panel opens; typing then only compares.
+    val index by androidx.compose.runtime.produceState<com.inamibrahim.kinhold.model.SearchIndex?>(null, family) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { com.inamibrahim.kinhold.model.TreeSearch.index(family) }
+    }
+    val hits = remember(index, query) { index?.find(query).orEmpty() }
+    val results = remember(hits) { hits.map { it.person } }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
@@ -416,7 +421,7 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, onOldest: () -
                             .padding(horizontal = 18.dp, vertical = 12.dp),
                     ) {
                         if (query.isEmpty()) {
-                            Text("Type a name", style = MaterialTheme.typography.bodyLarge, color = Palette.TextMuted)
+                            Text("Name, place or note", style = MaterialTheme.typography.bodyLarge, color = Palette.TextMuted)
                         }
                         inner()
                     }
@@ -428,14 +433,15 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, onOldest: () -
             }
             if (query.isNotBlank() && results.isEmpty()) {
                 Text(
-                    "No one with that name",
+                    if (index == null) "Getting ready…" else "No one matches that",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Palette.TextMuted,
                     modifier = Modifier.padding(top = 12.dp, start = 4.dp),
                 )
             }
             LazyColumn(Modifier.heightIn(max = 320.dp).padding(top = if (results.isEmpty()) 0.dp else 8.dp)) {
-                items(results, key = { it.id }) { p ->
+                items(hits, key = { it.person.id }) { hit ->
+                    val p = hit.person
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -453,6 +459,8 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, onOldest: () -
                                 .filter { it.isNotEmpty() }
                                 .joinToString("  ·  ")
                             if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                            // When the match was a place or a note, say which one, so the result makes sense.
+                            if (hit.snippet.isNotEmpty()) Text(hit.snippet, style = MaterialTheme.typography.bodySmall, color = Palette.Accent, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
