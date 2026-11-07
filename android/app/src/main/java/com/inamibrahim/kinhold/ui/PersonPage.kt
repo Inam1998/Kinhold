@@ -81,8 +81,7 @@ fun PersonPageScreen(
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-            ScreenHeader("Person", person.name, Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
-            Pill("Back", false, onBack, Modifier.padding(horizontal = 20.dp), icon = Icons.AutoMirrored.Filled.ArrowBack)
+            ScreenHeader("Person", person.name, Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), onBack = onBack)
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
                 ActionTile("Share branch", Icons.Filled.Share, onShare, Modifier.weight(1f), tone = Tones.Teal)

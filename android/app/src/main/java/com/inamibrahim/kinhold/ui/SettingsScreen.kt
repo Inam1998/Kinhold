@@ -57,7 +57,7 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                 .verticalScroll(scroll)
                 .padding(horizontal = 20.dp),
         ) {
-            ScreenHeader("Kinhold", "Settings", Modifier.padding(top = 12.dp, bottom = 20.dp))
+            ScreenHeader("Kinhold", "Settings", Modifier.padding(top = 12.dp, bottom = 20.dp), onBack = onBack)
 
             AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
@@ -69,9 +69,9 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Pill(if (me != null) "Change" else "Choose yourself", false, { picking = true }, icon = Icons.Filled.Person)
-                        if (me != null) Pill("Clear", false, { onChooseMe(null) })
+                    EqualRow(2) {
+                        Pill(if (me != null) "Change" else "Choose yourself", false, { picking = true }, Modifier.weight(1f), icon = Icons.Filled.Person)
+                        if (me != null) Pill("Clear", false, { onChooseMe(null) }, Modifier.weight(1f))
                     }
                 }
             }
@@ -84,18 +84,18 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                     )
-                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    EqualRow(2) {
                         if (!AppLock.enabled) {
-                            DialogButton("Turn on", { onLock(LockSetupMode.On) }, kind = ButtonKind.Primary)
+                            DialogButton("Turn on", { onLock(LockSetupMode.On) }, Modifier.weight(1f), kind = ButtonKind.Primary)
                         } else {
-                            DialogButton("Change PIN", { onLock(LockSetupMode.Change) }, kind = ButtonKind.Tonal)
-                            DialogButton("Turn off", { onLock(LockSetupMode.Off) }, kind = ButtonKind.Danger)
+                            DialogButton("Change PIN", { onLock(LockSetupMode.Change) }, Modifier.weight(1f), kind = ButtonKind.Tonal)
+                            DialogButton("Turn off", { onLock(LockSetupMode.Off) }, Modifier.weight(1f), kind = ButtonKind.Danger)
                         }
                     }
                     if (AppLock.enabled) {
                         Text("Lock again", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
-                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (d in com.inamibrahim.kinhold.model.LockDelay.entries) Pill(d.label, AppLock.delay == d, { AppLock.chooseDelay(d) })
+                        EqualRow(1) {
+                            for (d in com.inamibrahim.kinhold.model.LockDelay.entries) Pill(d.label, AppLock.delay == d, { AppLock.chooseDelay(d) }, Modifier.weight(1f))
                         }
                     }
                 }
@@ -104,14 +104,14 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                 Column(Modifier.padding(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Settings, Tones.Sky, 36.dp); Text("Theme", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
-                        "Dark, light, or follow the phone.",
+                        "Follow the system, or choose light or dark.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (m in ThemeMode.entries) {
-                            Pill(if (m == ThemeMode.System) "Phone" else m.name, AppSettings.mode == m, { AppSettings.chooseMode(m) })
+                    EqualRow(3) {
+                        for (m in listOf(ThemeMode.System, ThemeMode.Light, ThemeMode.Dark)) {
+                            Pill(if (m == ThemeMode.System) "System" else m.name, AppSettings.mode == m, { AppSettings.chooseMode(m) }, Modifier.weight(1f))
                         }
                     }
                 }
@@ -142,10 +142,9 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                 Column(Modifier.padding(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Settings, Tones.Amber, 36.dp); Text("Dates", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text("Show the Hijri date beside a full date, for example on the Details page.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-                    Pill(if (AppSettings.showHijri) "Hijri dates: on" else "Hijri dates: off", AppSettings.showHijri, { AppSettings.chooseShowHijri(!AppSettings.showHijri) })
+                    Pill(if (AppSettings.showHijri) "Hijri dates: on" else "Hijri dates: off", AppSettings.showHijri, { AppSettings.chooseShowHijri(!AppSettings.showHijri) }, Modifier.fillMaxWidth())
                 }
             }
-            Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 20.dp))
             Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
         }
     }

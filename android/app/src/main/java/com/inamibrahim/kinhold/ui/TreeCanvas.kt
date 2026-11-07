@@ -89,17 +89,16 @@ class TreeViewState {
     /** Screen pixels for one tree unit. */
     val pxPerUnit: Float get() = scale * density
 
-    /** Frames the tree with the focused person in the middle of the screen, never smaller than readable. */
-    fun show(layout: TreeLayout) {
-        if (size.width == 0 || size.height == 0) return
-        stopFling()
-        bounds = Size(layout.width, layout.height)
+    private class Frame(val minScale: Float, val scale: Float, val offset: Offset)
+
+    /** The zoom and position that frame [layout] with its focused person in the middle, or null while the canvas has no size. */
+    private fun frameFor(layout: TreeLayout): Frame? {
+        if (size.width == 0 || size.height == 0) return null
         val w = (layout.width + 2 * MARGIN) * density
         val h = (layout.height + 2 * MARGIN) * density
         val fit = min(size.width / w, size.height / h)
-        minScale = (fit * 0.8f).coerceIn(0.05f, READABLE)
-        scale = fit.coerceIn(READABLE, 1f)
-        val s = pxPerUnit
+        val newScale = fit.coerceIn(READABLE, 1f)
+        val s = newScale * density
         // Centred on the focused person across; down, the whole view is centred if it fits, otherwise the focus sits
         // a little above the middle so the rows below it get the room.
         val contentHeight = layout.height * s
@@ -108,7 +107,100 @@ class TreeViewState {
         } else {
             size.height * 0.4f - layout.focusY * s
         }
-        offset = clamp(Offset(size.width / 2f - layout.focusX * s, y))
+        return Frame((fit * 0.8f).coerceIn(0.05f, READABLE), newScale, clamp(Offset(size.width / 2f - layout.focusX * s, y), s, Size(layout.width, layout.height)))
+    }
+
+    /** The layout the view was last framed on, so a tap on someone in it can slide from where they were drawn. */
+    private var lastLayout: TreeLayout? = null
+    private var slideTarget: Frame? = null
+
+    /** Frames the tree with the focused person in the middle of the screen, never smaller than readable. */
+    fun show(layout: TreeLayout) {
+        val f = frameFor(layout) ?: return
+        slideJob?.cancel()
+        framedSize = size
+        userMoved = false
+        stopFling()
+        bounds = Size(layout.width, layout.height)
+        minScale = f.minScale
+        scale = f.scale
+        offset = f.offset
+        lastLayout = layout
+        slideTarget = null
+    }
+
+    /**
+     * Called as soon as a new layout exists, before it is first drawn. If the new focus was on screen in the old layout,
+     * the new tree is placed so that this person has not moved; [slideOrShow] then glides the view to the centre. Without
+     * this the first frame of the new tree would be drawn in the old place.
+     */
+    private var jumping = false
+
+    fun prepareSlide(layout: TreeLayout) {
+        slideJob?.cancel()
+        slideTarget = null
+        jumping = false
+        val old = lastLayout ?: return
+        if (size.width == 0 || framedFocus == -1 || layout.focusId == framedFocus) return
+        val target = frameFor(layout) ?: return
+        val before = old.people.firstOrNull { it.person.id == layout.focusId }
+        val after = layout.people.firstOrNull { it.person.id == layout.focusId }
+        bounds = Size(layout.width, layout.height)
+        if (before == null || after == null) {
+            // A far jump (Find, Me): the new person was not on screen, so there is nothing to slide from. The new tree
+            // starts a little lower, already at its final zoom, and rises into place while it fades in.
+            jumping = true
+            scale = target.scale
+            offset = Offset(target.offset.x, target.offset.y + 56f * density)
+            slideTarget = target
+            return
+        }
+        val s = pxPerUnit
+        val onScreen = offset + Offset(before.x, before.y) * s
+        offset = onScreen - Offset(after.x, after.y) * s
+        slideTarget = target
+    }
+
+    private var slideJob: Job? = null
+
+    /** The canvas size the view was last framed for, and whether the person has moved the view since. A change of size (for example the card growing) re-frames the view unless it was moved. */
+    var framedSize = IntSize.Zero
+    var userMoved = false
+
+    /** Frames the view again for the current canvas size, gliding there. */
+    fun reframe(layout: TreeLayout, scope: kotlinx.coroutines.CoroutineScope) {
+        slideTarget = frameFor(layout) ?: return
+        slideOrShow(layout, scope)
+    }
+
+    /**
+     * Glides to the framing of [layout] if [prepareSlide] set one up, and otherwise frames it at once. The glide runs in
+     * [scope] (not in an effect that restarts), so it is never cut short half way.
+     */
+    fun slideOrShow(layout: TreeLayout, scope: kotlinx.coroutines.CoroutineScope) {
+        slideJob?.cancel()
+        framedSize = size
+        userMoved = false
+        // The target is worked out again here: the canvas may have changed size since prepareSlide, for example when the card grew.
+        val target = if (slideTarget != null) frameFor(layout) else null
+        if (target == null) {
+            show(layout)
+            return
+        }
+        slideTarget = null
+        stopFling()
+        lastLayout = layout
+        minScale = target.minScale
+        val s0 = scale
+        val o0 = offset
+        slideJob = scope.launch {
+            androidx.compose.animation.core.animate(0f, 1f, animationSpec = tween(if (jumping) 260 else 340, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { p, _ ->
+                scale = s0 + (target.scale - s0) * p
+                offset = Offset(o0.x + (target.offset.x - o0.x) * p, o0.y + (target.offset.y - o0.y) * p)
+            }
+            scale = target.scale
+            offset = target.offset
+        }
     }
 
     fun stopFling() {
@@ -122,6 +214,7 @@ class TreeViewState {
         val z = newScale / scale
         scale = newScale
         offset = clamp((offset - centroid) * z + centroid + pan)
+        userMoved = true
     }
 
     /** Keeps gliding after the finger lifts, slowing down like a real surface. */
@@ -136,13 +229,12 @@ class TreeViewState {
     }
 
     /** Keeps some of the tree on screen so it can never be dragged out of sight. */
-    private fun clamp(o: Offset): Offset {
-        val s = pxPerUnit
+    private fun clamp(o: Offset, s: Float = pxPerUnit, b: Size = bounds): Offset {
         val keep = 96f
-        val loX = min(keep - bounds.width * s, size.width - keep)
-        val hiX = max(keep - bounds.width * s, size.width - keep)
-        val loY = min(keep - bounds.height * s, size.height - keep)
-        val hiY = max(keep - bounds.height * s, size.height - keep)
+        val loX = min(keep - b.width * s, size.width - keep)
+        val hiX = max(keep - b.width * s, size.width - keep)
+        val loY = min(keep - b.height * s, size.height - keep)
+        val hiY = max(keep - b.height * s, size.height - keep)
         return Offset(o.x.coerceIn(loX, hiX), o.y.coerceIn(loY, hiY))
     }
 

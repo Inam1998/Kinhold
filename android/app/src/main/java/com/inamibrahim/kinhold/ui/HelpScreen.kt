@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -129,7 +131,7 @@ fun HelpScreen(listScroll: ScrollState, onClose: () -> Unit) {
                     .padding(horizontal = 20.dp),
             ) {
                 if (page == null) {
-                    ScreenHeader("Kinhold", "Help", Modifier.padding(top = 12.dp, bottom = 16.dp))
+                    ScreenHeader("Kinhold", "Help", Modifier.padding(top = 12.dp, bottom = 16.dp), onBack = onClose)
                     Field("Search the guide", query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 16.dp))
                     val results = remember(query) { search(query) }
                     if (results.isEmpty()) {
@@ -154,7 +156,6 @@ fun HelpScreen(listScroll: ScrollState, onClose: () -> Unit) {
                             }
                         }
                     }
-                    DialogButton("Back", onClose, Modifier.fillMaxWidth().padding(top = 8.dp), kind = ButtonKind.Neutral)
                 } else {
                     PageContent(page, onBack = { open = null })
                 }
@@ -168,6 +169,8 @@ fun HelpScreen(listScroll: ScrollState, onClose: () -> Unit) {
 private fun PageContent(page: HelpPage, onBack: () -> Unit) {
     val (icon, tone) = look(page.topic)
     Row(Modifier.padding(top = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        BackButton(onBack)
+        Spacer(Modifier.width(14.dp))
         ToneIcon(icon, tone, 52.dp)
         Column(Modifier.padding(start = 16.dp)) {
             Text("HELP", style = MaterialTheme.typography.labelMedium, color = Palette.Accent)
@@ -199,5 +202,4 @@ private fun PageContent(page: HelpPage, onBack: () -> Unit) {
             }
         }
     }
-    DialogButton("All help topics", onBack, Modifier.fillMaxWidth().padding(top = 20.dp), kind = ButtonKind.Neutral)
 }

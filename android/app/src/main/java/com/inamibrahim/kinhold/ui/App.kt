@@ -15,11 +15,13 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -70,6 +72,9 @@ sealed interface Screen {
 
     data object More : Screen
 
+    /** The short first-run introduction. */
+    data object Tour : Screen
+
     /** Checks for impossible data and for people entered twice. */
     data object Checks : Screen
 
@@ -103,6 +108,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help -> "help"
             Screen.Settings -> "settings"
             Screen.More -> "more"
+            Screen.Tour -> "tour"
             Screen.Checks -> "checks"
             Screen.Upcoming -> "upcoming"
             is Screen.Related -> "relation|${s.first}|${s.second}"
@@ -134,6 +140,8 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Upcoming
         } else if (text == "checks") {
             Screen.Checks
+        } else if (text == "tour") {
+            Screen.Tour
         } else if (text == "more") {
             Screen.More
         } else if (text == "merge") {
@@ -172,13 +180,14 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
 @Composable
 private fun KinholdContent(vm: KinholdViewModel) {
     val family by vm.family.collectAsState()
-    var screen by rememberSaveable(stateSaver = ScreenSaver) { mutableStateOf<Screen>(Screen.Tree) }
+    var screen by rememberSaveable(stateSaver = ScreenSaver) { mutableStateOf<Screen>(if (vm.tourSeen) Screen.Tree else Screen.Tour) }
     var focusId by rememberSaveable { mutableIntStateOf(-1) }
     // The person just deleted, offered for undo for a few seconds.
     var undo by remember { mutableStateOf<DeletedPerson?>(null) }
     // Set while asking who the other parent is for a child of someone with several spouses.
     var choosingParentFor by rememberSaveable { mutableStateOf<Int?>(null) }
     var noMeNotice by rememberSaveable { mutableStateOf(false) }
+    var choosingMe by rememberSaveable { mutableStateOf(false) }
     // Each screen keeps its scroll position while the person goes deeper and comes back; going forward to it starts fresh.
     val scrolls = remember { ScrollStore() }
     val nav = remember { NavMemory(screen) }
@@ -193,15 +202,20 @@ private fun KinholdContent(vm: KinholdViewModel) {
         }
     }
 
+    if (choosingMe) PersonPickerDialog(family, "Which card is you?", { vm.setMe(it); focusId = it; choosingMe = false }, { choosingMe = false })
+
     if (noMeNotice) {
         AlertDialog(
             onDismissRequest = { noMeNotice = false },
             containerColor = Palette.Surface,
             shape = RoundedCornerShape(28.dp),
             title = { Text("Who are you?", color = Palette.Text) },
-            text = { Text("Open yourself in the tree, choose Details, then This is me. After that the Me button brings the tree back to you from anywhere.", color = Palette.TextMuted) },
+            text = { Text("The Me button needs to know which card is you. Choose yourself now, or later in More, then Settings, then Who are you.", color = Palette.TextMuted) },
             confirmButton = {
-                DialogButton("OK", { noMeNotice = false }, kind = ButtonKind.Primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DialogButton("Not now", { noMeNotice = false }, kind = ButtonKind.Neutral)
+                    DialogButton("Choose now", { noMeNotice = false; choosingMe = true }, kind = ButtonKind.Primary)
+                }
             },
         )
     }
@@ -247,6 +261,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
                     MoreItem(Icons.Filled.Check, Tones.Teal, "Checks and duplicates", "Impossible dates, and people entered twice") { screen = Screen.Checks },
                     MoreItem(Icons.Filled.Settings, Tones.Sky, "Settings", "Who you are, app lock, theme and accent colour") { screen = Screen.Settings },
+                    MoreItem(Icons.Filled.Star, Tones.Coral, "Welcome tour", "The short introduction to Kinhold") { screen = Screen.Tour },
                     MoreItem(Icons.Filled.Info, Tones.Amber, "How Kinhold works", "A page for every feature, with its limits") { screen = Screen.Help },
                 ),
                 onBack = { screen = Screen.Tree },
@@ -280,6 +295,10 @@ private fun KinholdContent(vm: KinholdViewModel) {
             BackHandler { screen = Screen.More }
             val marriages by produceState<List<com.inamibrahim.kinhold.model.MarriageDate>?>(null, family) { value = vm.marriageDates(false) }
             ChecksScreen(vm, family, marriages, onOpen = { id -> focusId = id; screen = Screen.Tree }, onBack = { screen = Screen.More })
+        }
+
+        target is Screen.Tour -> {
+            TourScreen(onDone = { vm.markTourSeen(); screen = Screen.Tree })
         }
 
         target is Screen.LockSetup -> {
@@ -329,7 +348,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Backup -> {
             BackHandler { screen = Screen.More }
-            BackupScreen(vm = vm, peopleCount = family.size, scroll = scrolls.scroll("backup"), onBack = { screen = Screen.More }, onMerge = { screen = Screen.Merge })
+            BackupScreen(vm = vm, peopleCount = family.size, scroll = scrolls.scroll("backup"), onBack = { screen = Screen.More }, onMerge = { screen = Screen.Merge }, onCleared = { screen = Screen.Tree })
         }
 
         form != null -> {
@@ -403,6 +422,13 @@ private fun KinholdContent(vm: KinholdViewModel) {
                 undo = null
                 screen = Screen.Form(null, it)
             },
+            suggest = { suggestedDraft(family, it) },
+            sampleLoaded = vm.sampleLoaded,
+            cardCollapsed = vm.cardCollapsed,
+            onToggleCard = vm::toggleCard,
+            onClearTree = { vm.clearTree(keepCopy = false) {} },
+            onKeepSample = vm::keepSample,
+            onQuickAdd = { draft, relation -> vm.add(draft, relation, null, com.inamibrahim.kinhold.model.PersonDetails.Empty) {} },
             onAddChild = { parentId ->
                 undo = null
                 val spouses = family.spousesInOrder(parentId)
@@ -490,7 +516,7 @@ private fun formTitle(family: Family, form: Screen.Form, editing: Boolean): Stri
 private fun Family.nameOf(id: Int): String = if (id in this) person(id).name else "someone"
 
 /** Starting values that save typing: a child gets their father's surname, a spouse the opposite sex. */
-private fun suggestedDraft(family: Family, relation: Relation?): PersonDraft = when (relation) {
+internal fun suggestedDraft(family: Family, relation: Relation?): PersonDraft = when (relation) {
     null -> PersonDraft()
     is Relation.ChildOf -> {
         if (relation.parentId !in family) {
@@ -531,7 +557,7 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
 private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks -> 2
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -566,6 +592,7 @@ private fun Screen.key(): String = when (this) {
     is Screen.Related -> "relation"
     Screen.Upcoming -> "upcoming"
     Screen.Checks -> "checks"
+    Screen.Tour -> "tour"
     is Screen.Person -> "person"
     is Screen.Share -> "share"
     is Screen.Form -> "form"

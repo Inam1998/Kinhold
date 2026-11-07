@@ -79,7 +79,7 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
-            ScreenHeader("Share", "Share from ${person.name}", Modifier.padding(top = 12.dp, bottom = 16.dp))
+            ScreenHeader("Share", "Share from ${person.name}", Modifier.padding(top = 12.dp, bottom = 16.dp), onBack = onBack)
             Text(
                 "Makes a file with this person and the relatives you choose. A relative can open it in their Kinhold with " +
                     "\"Merge a shared file\" and get only the people they do not have, and be asked about the rest.",
@@ -93,22 +93,22 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
             }
 
             Text("Which relatives", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 4.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("Both ways", direction == ShareDirection.Both.ordinal, { direction = ShareDirection.Both.ordinal })
-                Pill("Ancestors", direction == ShareDirection.Ancestors.ordinal, { direction = ShareDirection.Ancestors.ordinal })
-                Pill("Descendants", direction == ShareDirection.Descendants.ordinal, { direction = ShareDirection.Descendants.ordinal })
+            EqualRow(3) {
+                Pill("Both ways", direction == ShareDirection.Both.ordinal, { direction = ShareDirection.Both.ordinal }, Modifier.weight(1f))
+                Pill("Ancestors", direction == ShareDirection.Ancestors.ordinal, { direction = ShareDirection.Ancestors.ordinal }, Modifier.weight(1f))
+                Pill("Descendants", direction == ShareDirection.Descendants.ordinal, { direction = ShareDirection.Descendants.ordinal }, Modifier.weight(1f))
             }
             Text("How many generations", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 4.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (g in listOf(1, 2, 3, 4)) Pill("$g", generations == g, { generations = g })
-                Pill("All", generations == 0, { generations = 0 })
+            EqualRow(5) {
+                for (g in listOf(1, 2, 3, 4)) Pill("$g", generations == g, { generations = g }, Modifier.weight(1f))
+                Pill("All", generations == 0, { generations = 0 }, Modifier.weight(1f))
             }
             Text("Also include", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 4.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("Spouses", spouses, { spouses = !spouses })
-                Pill("Photos", photos, { photos = !photos })
-                Pill("Contact details and own facts", contact, { contact = !contact })
-                Pill("Leave out people who may be alive", excludeLiving, { excludeLiving = !excludeLiving })
+            EqualRow(1) {
+                Pill("Spouses", spouses, { spouses = !spouses }, Modifier.weight(1f))
+                Pill("Photos", photos, { photos = !photos }, Modifier.weight(1f))
+                Pill("Contact details and own facts", contact, { contact = !contact }, Modifier.weight(1f))
+                Pill("Leave out people who may be alive", excludeLiving, { excludeLiving = !excludeLiving }, Modifier.weight(1f))
             }
             if (excludeLiving) {
                 Text(
@@ -154,7 +154,6 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                     }
                 }
             }
-            Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 16.dp))
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }

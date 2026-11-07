@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,7 +46,9 @@ import java.time.LocalDate
 
 /** Save the whole tree to one file, restore from one, and undo the last restore. */
 @Composable
-fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onMerge: () -> Unit) {
+fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onMerge: () -> Unit, onCleared: () -> Unit) {
+    var clearing by remember { mutableStateOf(false) }
+    val backupFirst = rememberBackupFirst(vm, peopleCount)
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var pending by remember { mutableStateOf<BackupData?>(null) }
 
@@ -104,7 +107,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 .verticalScroll(scroll)
                 .padding(horizontal = 20.dp),
         ) {
-            ScreenHeader("Kinhold", "Backup and restore", Modifier.padding(top = 12.dp, bottom = 20.dp))
+            ScreenHeader("Kinhold", "Backup and restore", Modifier.padding(top = 12.dp, bottom = 20.dp), onBack = onBack)
 
             message?.let { (text, isError) ->
                 AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -147,10 +150,10 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                         )
                     }
                     vm.autoError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(top = 8.dp)) }
-                    FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DialogButton(if (vm.autoFolderUri == null) "Choose a folder" else "Change folder", { folderPicker.launch(null) }, kind = ButtonKind.Primary)
-                        DialogButton("Back up now", { vm.autoBackupNow() }, kind = ButtonKind.Tonal, enabled = peopleCount > 0)
-                        if (vm.autoFolderUri != null) DialogButton("Stop using the folder", { vm.clearAutoFolder() }, kind = ButtonKind.Neutral)
+                    EqualRow(2, Modifier.padding(top = 16.dp)) {
+                        DialogButton(if (vm.autoFolderUri == null) "Choose a folder" else "Change folder", { folderPicker.launch(null) }, Modifier.weight(1f), kind = ButtonKind.Primary)
+                        DialogButton("Back up now", { vm.autoBackupNow() }, Modifier.weight(1f), kind = ButtonKind.Tonal, enabled = peopleCount > 0)
+                        if (vm.autoFolderUri != null) DialogButton("Stop using the folder", { vm.clearAutoFolder() }, Modifier.weight(1f), kind = ButtonKind.Neutral)
                         DialogButton(
                             "Restore the latest copy",
                             {
@@ -162,6 +165,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                                 }
                             },
                             kind = ButtonKind.Neutral,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -267,15 +271,15 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
             if (vm.hasSafetyCopy) {
                 AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.AutoMirrored.Filled.ArrowBack, Tones.Coral, 40.dp); Text("Undo the last restore or import", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.AutoMirrored.Filled.ArrowBack, Tones.Coral, 40.dp); Text("Undo the last restore, import or delete", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                         Text(
-                            "Brings back the tree you had just before the last restore or import. The tree on this phone now becomes the saved copy.",
+                            "Brings back the tree you had just before the last restore, import or delete. The tree on this phone now becomes the saved copy.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Palette.TextMuted,
                             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
                         )
                         Pill(
-                            "Undo the last restore or import",
+                            "Undo the last restore, import or delete",
                             selected = false,
                             onClick = {
                                 vm.undoRestore { result ->
@@ -291,10 +295,21 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 }
             }
 
-            Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 20.dp))
+            if (peopleCount > 0) {
+                AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Column(Modifier.padding(24.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Delete, Tones.Rose, 40.dp); Text("Start over", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                        Text("Removes everyone from the tree, for example a sample family you loaded to look around. A copy is kept first, so you can undo it here.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
+                        DialogButton("Delete the whole tree", { clearing = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
+                    }
+                }
+            }
+
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }
+
+    if (clearing) ClearTreeDialog(peopleCount, { clearing = false; vm.clearTree { onCleared() } }, { clearing = false })
 
     pending?.let { data ->
         AlertDialog(
@@ -318,11 +333,13 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                         "Replace",
                         {
                             pending = null
-                            vm.restore(data) { result ->
-                                message = result.fold(
-                                    { "Restored ${plural(data.people.size)}." to false },
-                                    { (it.message ?: "The backup could not be restored.") to true },
-                                )
+                            backupFirst("Restoring this backup") {
+                                vm.restore(data) { result ->
+                                    message = result.fold(
+                                        { "Restored ${plural(data.people.size)}." to false },
+                                        { (it.message ?: "The backup could not be restored.") to true },
+                                    )
+                                }
                             }
                         },
                         kind = ButtonKind.Danger,

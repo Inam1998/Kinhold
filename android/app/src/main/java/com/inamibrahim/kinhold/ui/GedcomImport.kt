@@ -35,6 +35,7 @@ fun rememberGedcomImporter(
     onMessage: (String, Boolean) -> Unit,
 ): () -> Unit {
     var pending by remember { mutableStateOf<GedcomResult?>(null) }
+    val backupFirst = rememberBackupFirst(vm, currentPeople)
     val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             vm.readGedcom(uri) { result ->
@@ -50,12 +51,12 @@ fun rememberGedcomImporter(
         val count = found.data.people.size
         fun finish(replace: Boolean) {
             pending = null
-            vm.importGedcom(found.data, replace) { result ->
+            backupFirst("Importing this file") { vm.importGedcom(found.data, replace) { result ->
                 result.fold(
                     { onMessage(if (replace) "Imported $count ${if (count == 1) "person" else "people"}." else "Added $count ${if (count == 1) "person" else "people"} to your tree.", false) },
                     { onMessage(it.message ?: "The file could not be imported.", true) },
                 )
-            }
+            } }
         }
         AlertDialog(
             onDismissRequest = { pending = null },

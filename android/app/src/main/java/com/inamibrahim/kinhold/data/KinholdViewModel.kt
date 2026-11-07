@@ -70,6 +70,22 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     private val autoLock = Mutex()
     private var lastSavedSnapshot: Family? = null
 
+    /** Whether the focus card on the tree is folded down to just the name. */
+    var cardCollapsed by mutableStateOf(prefs.getBoolean("card_collapsed", false))
+        private set
+
+    fun toggleCard() {
+        cardCollapsed = !cardCollapsed
+        prefs.edit { putBoolean("card_collapsed", cardCollapsed) }
+    }
+
+    /** Whether the first-run introduction has been shown. */
+    val tourSeen: Boolean get() = prefs.getBoolean("tour_seen", false)
+
+    fun markTourSeen() {
+        prefs.edit { putBoolean("tour_seen", true) }
+    }
+
     /** Whether the tree from before the last restore is still kept, so the restore can be undone. */
     var hasSafetyCopy by mutableStateOf(repo.hasSafetyCopy())
         private set
@@ -158,8 +174,29 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.restoreDeleted(deleted) }
     }
 
+    /** Whether the tree was filled from the start screen sample and not yet cleared or kept. */
+    var sampleLoaded by mutableStateOf(prefs.getBoolean("sample_loaded", false))
+        private set
+
+    private fun setSample(on: Boolean) {
+        sampleLoaded = on
+        prefs.edit { putBoolean("sample_loaded", on) }
+    }
+
+    fun keepSample() = setSample(false)
+
+    /** Removes everyone. The tree is kept as the safety copy first, so Backup and sharing can undo it. */
+    fun clearTree(keepCopy: Boolean = true, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { repo.replaceAll(BackupData(emptyList(), emptyList(), emptyList()), keepCopy) }
+            hasSafetyCopy = repo.hasSafetyCopy()
+            if (result.isSuccess) setSample(false)
+            onResult(result)
+        }
+    }
+
     fun addSampleFamily(count: Int) {
-        viewModelScope.launch { repo.addSampleFamily(count) }
+        viewModelScope.launch { repo.addSampleFamily(count); setSample(true) }
     }
 
     /** Writes the whole tree to the file the person chose. [onResult] gets the number of people saved, or the error. */
@@ -302,9 +339,9 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Applies the choices made on the merge screen. [onResult] gets what was done. */
-    fun applyMerge(session: MergeSession, accepted: Set<Int>, useHis: Set<Pair<Int, MergeField>>, addEvents: Boolean, onResult: (Result<MergeResult>) -> Unit) {
+    fun applyMerge(session: MergeSession, accepted: Set<Int>, useHis: Set<Pair<Int, MergeField>>, addEvents: Boolean, anchor: com.inamibrahim.kinhold.model.Anchor?, onResult: (Result<MergeResult>) -> Unit) {
         viewModelScope.launch {
-            val result = runCatching { repo.applyMerge(session.data, accepted, useHis, addEvents) }
+            val result = runCatching { repo.applyMerge(session.data, accepted, useHis, addEvents, anchor) }
             hasSafetyCopy = repo.hasSafetyCopy()
             onResult(result)
         }
@@ -422,6 +459,7 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     fun restore(data: BackupData, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             val result = runCatching { repo.replaceAll(data) }
+            if (result.isSuccess) setSample(false)
             hasSafetyCopy = repo.hasSafetyCopy()
             onResult(result)
         }

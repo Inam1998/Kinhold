@@ -26,9 +26,10 @@ object HelpGuide {
             summary = "Build your tree one person at a time.",
             sections = listOf(
                 HelpSection("Add the first person", "On the start screen choose Add the first person. A first name or a surname is enough; everything else is optional."),
-                HelpSection("Add their relatives", "Use + Parent, + Spouse and + Child on the card at the bottom of the tree. The new person is linked to the person on that card."),
+                HelpSection("Add their relatives", "Use Parent, Sibling, Spouse and Child on the card at the bottom of the tree (Sibling shows once the person has a parent recorded). The new person is linked to the person on that card."),
+                HelpSection("Quick add", "The Quick add button on the tree asks only for a name. Choose Child, Spouse, Parent or Sibling, type the name and tap Add; the box stays open so you can add several people. A name with two or more words uses the last word as the surname. You can fill in dates and other details later with Edit."),
                 HelpSection("Already have a tree somewhere else?", "Choose Import a GEDCOM file on the start screen. See \"Moving a tree in and out\"."),
-                HelpSection("Just looking around?", "The start screen can fill the tree with an invented family. They are ordinary entries you can edit, delete or replace by restoring a backup."),
+                HelpSection("Just looking around?", "The start screen can fill the tree with an invented family. They are ordinary entries. A bar on the tree offers Clear sample, and Backup and sharing has Delete the whole tree, so you can start your own tree. Clear sample cannot be undone (sample people are invented, so no copy is kept); Delete the whole tree keeps a copy so it can be undone."),
             ),
             limits = listOf(
                 "A person can have up to four parents recorded: birth, adoptive, foster and step.",
@@ -109,12 +110,16 @@ object HelpGuide {
                 HelpSection("Sending a branch", "Open Details on a person, then choose Share branch. Pick which relatives (ancestors, descendants or both), how many generations, and whether to include spouses and photos. Save the file and send it to your relative by any app, such as WhatsApp or email."),
                 HelpSection("Merging a file you received", "Open Backup, then Choose a file to merge. Kinhold compares it with your tree and shows you what it found before anything changes. Nothing in your own tree is replaced unless you choose it."),
                 HelpSection("Is this the same person?", "People who travelled from one Kinhold to another are matched for sure. Others are suggested by name, birth year and relatives in common. A strong suggestion starts as the same person, a weaker one as a different person, and you can change either."),
+                HelpSection("Who is the main person?", "A share file records the person it was made from. When you merge it, the first card says \"This branch starts with …\". If that person is already in your tree, Kinhold shows who it matched, and you can choose someone else. If they are not in your tree, choose Attach to someone, pick a person you have and say whether the new person is their parent, child, spouse or sibling. Everyone else in the file is placed around them."),
+                HelpSection("Save a backup first", "Before a merge, an import or a restore, Kinhold offers to save a backup file of your tree. Save a backup does that and then carries on; Continue without skips it. A backup file is the safest way back if something goes wrong."),
                 HelpSection("Fields that differ", "For people in both trees you see each field that differs. Where yours is empty or less exact it starts as use theirs, and where the two disagree it starts as keep mine. Choose for each field, or fill all your empty fields at once."),
                 HelpSection("Undo", "A copy of your tree is kept first. Choose Undo this merge, or later Undo the last restore or import in Backup."),
                 HelpSection("A picture or a PDF", "On the Share screen, Print or send a picture saves a chart of what the tree shows around that person, as a PDF to print or a PNG picture to send. It is drawn in light colours with dark text so it prints well."),
             ),
             limits = listOf(
                 "Share files, like backups, are not encrypted. Send them only to people you trust.",
+                "Only files made by a recent Kinhold say who their main person is. For an older share file, a backup or a GEDCOM file there is no \"branch starts with\" card, so people are matched by name, birth year and relatives only.",
+                "You can attach the main person to a person you already have, but you cannot link two people already in your tree here. Attaching as a sibling needs the chosen person to have a parent recorded, and a person can still have at most four parents.",
                 "The chart shows only what the tree screen shows: three generations above and two below the person, with names and years but no photos. It is a picture, so the people in it cannot be merged by anyone who receives it.",
                 "Phone numbers, email addresses, addresses, map pins and your own custom facts are left out of a share file unless you switch on Contact details and own facts. The tree owner mark (This is me) is never sent.",
                 "Leaving out people who may be alive is a guess: it leaves out anyone with no death date born in the last 110 years, and keeps people with no dates at all.",
@@ -183,6 +188,7 @@ object HelpGuide {
                 HelpSection("Saving one", "Open Backup, then Save a backup file, and choose where it goes: Google Drive, an email to yourself, your computer. Kinhold does not need access to your files for this."),
                 HelpSection("Automatic backup", "Kinhold also saves a copy by itself shortly after you change your tree, and when you leave the app. Open More, then Backup and sharing, then Automatic backup. Copies are kept inside the app (the newest ten, and the newest of each of the last seven days). Choose a folder there and the same copies are also written to it, which keeps your tree even if the app is uninstalled. Restore the latest copy puts back the newest copy kept inside the app."),
                 HelpSection("Reminders", "The tree screen shows when you last saved a backup. It turns amber when you have five or more people and no backup for a month."),
+                HelpSection("Starting over", "Delete the whole tree (at the bottom of Backup and sharing, and Clear sample on a sample tree) removes everyone after you confirm. Kinhold keeps a copy first, and Undo the last restore, import or delete on the same screen brings it back until the next restore, import or delete."),
             ),
             limits = listOf(
                 "The file is not encrypted. Anyone who has it can read your tree, so keep it private.",
@@ -229,7 +235,7 @@ object HelpGuide {
             summary = "Dark or light, and the accent colour.",
             sections = listOf(
                 HelpSection("Opening Settings", "Choose Settings at the top of the tree screen, or on the start screen."),
-                HelpSection("Theme", "Dark, Light, or Phone, which follows your phone's own dark mode setting."),
+                HelpSection("Theme", "System, which follows your phone's own dark mode setting, or Light, or Dark."),
                 HelpSection("Accent colour", "Pick one of six colours for buttons, highlights and the focus outline. Changes apply straight away and are remembered."),
             ),
             limits = listOf(

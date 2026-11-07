@@ -79,7 +79,7 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-            ScreenHeader("Family dates", "Upcoming", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
+            ScreenHeader("Family dates", "Upcoming", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), onBack = onBack)
             LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     AppCard(Modifier.fillMaxWidth()) {
@@ -145,7 +145,6 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                 }
                 item { Column(Modifier.padding(bottom = 8.dp)) {} }
             }
-            DialogButton("Back", onBack, Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 20.dp, vertical = 12.dp), kind = ButtonKind.Neutral)
         }
     }
 }

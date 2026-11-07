@@ -198,10 +198,20 @@ class Merge(
         return out
     }
 
+    /** The file's main person (the one a share file was made from), or null for files that do not say. */
+    val rootIncomingId: Int? = incoming.people.firstOrNull { it.uid.isNotEmpty() && it.uid == incoming.rootUid }?.id
+
     /** The people matched for sure, plus the suggestions the person accepted (by incoming id). */
-    fun matchesFor(accepted: Set<Int>): Map<Int, Int> {
+    fun matchesFor(accepted: Set<Int>, anchor: Anchor? = null): Map<Int, Int> {
         val out = LinkedHashMap(exact)
         for (c in candidates) if (c.incomingId in accepted) out[c.incomingId] = c.currentId
+        val root = rootIncomingId
+        if (anchor is Anchor.Same && root != null && anchor.currentId in current) {
+            // The person's own answer wins over any automatic match for either side.
+            out.remove(root)
+            out.entries.removeAll { it.value == anchor.currentId }
+            out[root] = anchor.currentId
+        }
         return out
     }
 
@@ -261,8 +271,8 @@ class Merge(
      * person, field) where the file's value replaces yours, and [addEvents] whether events and sources the file has and you
      * do not are added to people who are in both trees. People only in the file are always added with their own.
      */
-    fun resolve(accepted: Set<Int>, useHis: Set<Pair<Int, MergeField>>, addEvents: Boolean): MergeResult {
-        val matches = matchesFor(accepted)
+    fun resolve(accepted: Set<Int>, useHis: Set<Pair<Int, MergeField>>, addEvents: Boolean, anchor: Anchor? = null): MergeResult {
+        val matches = matchesFor(accepted, anchor)
         fun ref(incomingId: Int): Int = matches[incomingId] ?: -incomingId
 
         val updates = LinkedHashMap<Int, PersonDraft>()
@@ -306,6 +316,25 @@ class Merge(
             partnerships += minOf(ra, rb) to maxOf(ra, rb)
         }
 
+        // The person said where the file's main person belongs: attach them, if they are new, to someone in the tree.
+        val rootId = rootIncomingId
+        if (anchor is Anchor.Attach && rootId != null && rootId !in matches && anchor.currentId in current) {
+            val r = ref(rootId)
+            val x = anchor.currentId
+            fun addLink(child: Int, parent: Int) {
+                val set = parentsNow.getOrPut(child) { if (child > 0) current.parentsOf(child).map { it.id }.toMutableSet() else mutableSetOf() }
+                if (parent in set) return
+                if (set.size >= Family.MAX_PARENTS) { skipped++; return }
+                set += parent
+                links += child to parent
+            }
+            when (anchor.kind) {
+                AttachKind.Parent -> addLink(x, r)
+                AttachKind.Child -> addLink(r, x)
+                AttachKind.Spouse -> partnerships += minOf(r, x) to maxOf(r, x)
+                AttachKind.Sibling -> for (p in current.parentsOf(x).take(2)) addLink(r, p.id)
+            }
+        }
         val personEvents = LinkedHashMap<Int, List<Event>>()
         val personSources = LinkedHashMap<Int, List<Source>>()
         val personFields = LinkedHashMap<Int, List<CustomField>>()
@@ -373,4 +402,17 @@ class Merge(
         /** A score at or above this is suggested as the same person; below it, only offered. */
         const val STRONG = 4
     }
+}
+
+/** How a person who is not in your tree yet is attached to someone who is. */
+enum class AttachKind(val label: String) { Parent("parent"), Child("child"), Spouse("spouse"), Sibling("sibling") }
+
+/**
+ * The person's answer to "who is the file's main person in my tree?": [Same] says they are [Same.currentId] (even where
+ * the automatic match missed or guessed wrong); [Attach] says they are new and are added as the [Attach.kind] of
+ * [Attach.currentId].
+ */
+sealed interface Anchor {
+    data class Same(val currentId: Int) : Anchor
+    data class Attach(val currentId: Int, val kind: AttachKind) : Anchor
 }

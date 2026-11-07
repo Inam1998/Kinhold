@@ -50,7 +50,7 @@ object Actions {
         val uri = when {
             pin != null -> Uri.parse("geo:${pin.lat},${pin.lng}?q=${pin.lat},${pin.lng}(${Uri.encode(label)})")
             address.isNotBlank() -> Uri.parse("geo:0,0?q=" + Uri.encode(address))
-            else -> return
+            else -> Uri.parse("geo:0,0")
         }
         launch(context, Intent(Intent.ACTION_VIEW, uri), "No maps app found.")
     }

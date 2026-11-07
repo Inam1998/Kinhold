@@ -88,14 +88,10 @@ fun StartScreen(vm: KinholdViewModel, onHelp: () -> Unit, onSettings: () -> Unit
                 }
             }
 
-            FlowRow(
-                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Pill("Import a GEDCOM file", selected = false, onClick = openGedcom)
-                Pill("How Kinhold works", selected = false, onClick = onHelp)
-                Pill("Settings", selected = false, onClick = onSettings)
+EqualRow(1, Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                Pill("Import a GEDCOM file", selected = false, onClick = openGedcom, modifier = Modifier.weight(1f))
+                Pill("How Kinhold works", selected = false, onClick = onHelp, modifier = Modifier.weight(1f))
+                Pill("Settings", selected = false, onClick = onSettings, modifier = Modifier.weight(1f))
             }
             Text(
                 "Already have a tree in Ancestry, MyHeritage or another program? Export it as GEDCOM there and open it here.",
@@ -122,18 +118,14 @@ fun StartScreen(vm: KinholdViewModel, onHelp: () -> Unit, onSettings: () -> Unit
                 modifier = Modifier.padding(top = 28.dp, start = 24.dp, end = 20.dp),
             )
             Text(
-                "Fill the tree with an invented family to try the app. Sample people are real entries you can edit or remove.",
+                "Fill the tree with an invented family to try the app. Sample people are real entries. A Clear button on the tree removes them all, so you can start your own.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Palette.TextMuted,
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp, start = 24.dp, end = 20.dp),
             )
             // The padding sits inside the scrolling row so the buttons slide to the screen edge, not to the margin.
-            FlowRow(
-                Modifier.padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                for (n in SampleSizes) Pill("%,d people".format(n), selected = false, onClick = { onSample(n) })
+EqualRow(2, Modifier.padding(horizontal = 20.dp)) {
+                for (n in SampleSizes) Pill("%,d people".format(n), selected = false, onClick = { onSample(n) }, modifier = Modifier.weight(1f))
             }
             Column(Modifier.padding(bottom = 24.dp)) {}
         }

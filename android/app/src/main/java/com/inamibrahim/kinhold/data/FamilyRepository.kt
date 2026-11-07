@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import com.inamibrahim.kinhold.model.Anchor
 import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.CoupleInfo
@@ -237,8 +238,8 @@ class FamilyRepository(
      * Replaces the whole tree with [data]. The tree as it is now is first written to the safety copy, so a restore can
      * be undone, and the replacement happens in one transaction: either all of it is stored or none of it.
      */
-    suspend fun replaceAll(data: BackupData) = changing { db ->
-        writeSafetyCopy(db, _family.value)
+    suspend fun replaceAll(data: BackupData, keepSafetyCopy: Boolean = true) = changing { db ->
+        if (keepSafetyCopy) writeSafetyCopy(db, _family.value)
         db.delete("person", null, null)
         for (p in data.people) db.insertWithId(p.id, p.toDraft(), p.isMe)
         for ((child, parent) in data.parentLinks) db.insertLink(child, parent, data.linkKinds[child to parent] ?: LinkKind.Birth)
@@ -284,6 +285,7 @@ class FamilyRepository(
             val text = BackupCodec.encode(
                 Share.subFamily(family, ids, scope.withContact), Instant.now().toString(), photos, Share.subDetails(db.readTreeDetails(), ids, scope.withContact),
                 if (scope.withPhotos) db.readGalleryAll().filterKeys { it in ids } else emptyMap(),
+                rootUid = family.person(rootId).uid,
             )
             text to ids.size
         }
@@ -304,9 +306,10 @@ class FamilyRepository(
         accepted: Set<Int>,
         useHis: Set<Pair<Int, MergeField>>,
         addEvents: Boolean,
+        anchor: Anchor? = null,
     ): MergeResult = changing { db ->
         writeSafetyCopy(db, _family.value)
-        val result = Merge(_family.value, db.readTreeDetails(), data).resolve(accepted, useHis, addEvents)
+        val result = Merge(_family.value, db.readTreeDetails(), data).resolve(accepted, useHis, addEvents, anchor)
         val byId = data.people.associateBy { it.id }
         val taken = db.rawQuery("SELECT uid FROM person", null).use { c -> HashSet<String>().apply { while (c.moveToNext()) c.getString(0)?.let(::add) } }
         val newIds = HashMap<Int, Int>()

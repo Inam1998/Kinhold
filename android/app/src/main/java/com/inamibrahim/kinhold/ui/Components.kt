@@ -1,5 +1,8 @@
 package com.inamibrahim.kinhold.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
@@ -11,7 +14,9 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +40,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -51,7 +58,7 @@ import androidx.compose.foundation.layout.width
 
 /** The screen colour with a soft accent glow fading in from the top, as on every screen of the other apps. */
 @Composable
-fun ScreenBackground(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun ScreenBackground(modifier: Modifier = Modifier, maxContentWidth: androidx.compose.ui.unit.Dp = 640.dp, content: @Composable () -> Unit) {
     Box(
         modifier
             .fillMaxSize()
@@ -73,24 +80,54 @@ fun ScreenBackground(modifier: Modifier = Modifier, content: @Composable () -> U
                     ),
                 )
             },
-    ) { content() }
+    ) {
+        // On wide screens (landscape, tablets) the content stays a readable width in the middle instead of stretching edge to edge.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Box(Modifier.widthIn(max = maxContentWidth).fillMaxSize()) { content() }
+        }
+    }
 }
 
 /** A small accent overline above a large bold title, left-aligned, with no bar or divider. */
 @Composable
-fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(
-            overline.uppercase(),
-            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.4.sp),
-            color = Palette.Accent,
-        )
-        Text(
-            title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = Palette.Text,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (onBack != null) {
+            BackButton(onBack)
+            Spacer(Modifier.width(14.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                overline.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.4.sp),
+                color = Palette.Accent,
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineMedium,
+                color = Palette.Text,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+/** A round arrow button for going back. The arrow alone says it, so it carries no text (only a description for screen readers). */
+@Composable
+fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val press = rememberPressScale()
+    Box(
+        modifier
+            .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
+            .size(46.dp)
+            .shadow(3.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(Palette.SurfaceHigh)
+            .semantics(mergeDescendants = true) { contentDescription = "Back" }
+            .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Palette.Text, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -103,14 +140,14 @@ fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
             .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
             .height(38.dp)
             .clip(RoundedCornerShape(50))
-            .background(if (selected) Palette.Accent else Palette.SurfaceHigh)
+            .background(animateColorAsState(if (selected) Palette.Accent else Palette.SurfaceHigh, tween(200), label = "pill").value)
             .semantics(mergeDescendants = true) { contentDescription = label }
             .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val tint = if (selected) Palette.OnAccent else Palette.Text
+            val tint by animateColorAsState(if (selected) Palette.OnAccent else Palette.Text, tween(200), label = "pillText")
             if (icon != null) {
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
@@ -308,4 +345,20 @@ fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
         }
         Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = ink)
     }
+}
+
+/**
+ * A group of buttons laid out [perRow] to a row, where every button in a row has the same width and the last row stretches
+ * to fill the space left. Give each button `Modifier.weight(1f)` inside it.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun EqualRow(perRow: Int, modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier.then(Modifier.fillMaxWidth()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = perRow,
+        content = content,
+    )
 }

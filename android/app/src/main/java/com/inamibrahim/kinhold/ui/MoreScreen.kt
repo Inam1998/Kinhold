@@ -36,11 +36,10 @@ class MoreItem(val icon: ImageVector, val tone: Color, val title: String, val su
 fun MoreScreen(items: List<MoreItem>, onBack: () -> Unit) {
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp)) {
-            ScreenHeader("Kinhold", "More", Modifier.padding(top = 12.dp, bottom = 20.dp))
+            ScreenHeader("Kinhold", "More", Modifier.padding(top = 12.dp, bottom = 20.dp), onBack = onBack)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (item in items) MoreRow(item.icon, item.tone, item.title, item.subtitle, item.onClick)
             }
-            DialogButton("Back to the tree", onBack, Modifier.fillMaxWidth().padding(top = 20.dp), kind = ButtonKind.Neutral)
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }

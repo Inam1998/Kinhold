@@ -68,9 +68,9 @@ fun GallerySection(vm: KinholdViewModel, personId: Int) {
                 }
             }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            DialogButton("Add a photo", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, kind = ButtonKind.Tonal, icon = Icons.Filled.Add)
-            DialogButton("Take a photo", { val p = CameraShot.prepare(context); shot = p; camera.launch(p.uri) }, kind = ButtonKind.Neutral)
+        EqualRow(2) {
+            DialogButton("Add a photo", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.weight(1f), kind = ButtonKind.Tonal, icon = Icons.Filled.Add)
+            DialogButton("Take a photo", { val p = CameraShot.prepare(context); shot = p; camera.launch(p.uri) }, Modifier.weight(1f), kind = ButtonKind.Neutral)
         }
         notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger) }
     }

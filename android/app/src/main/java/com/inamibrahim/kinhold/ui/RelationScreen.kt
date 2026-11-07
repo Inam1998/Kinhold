@@ -54,7 +54,7 @@ fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Un
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ScreenHeader("Relationship", "How are they related?", Modifier.padding(top = 12.dp, bottom = 8.dp))
+            ScreenHeader("Relationship", "How are they related?", Modifier.padding(top = 12.dp, bottom = 8.dp), onBack = onBack)
             PersonSlot("First person", a.name, a.lifeDates()) { picking = 1 }
             PersonSlot("Second person", b.name, b.lifeDates()) { picking = 2 }
             DialogButton("Swap them", { val t = first; first = second; second = t }, kind = ButtonKind.Neutral)
@@ -91,7 +91,6 @@ fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Un
                     }
                 }
             }
-            DialogButton("Back", onBack, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }

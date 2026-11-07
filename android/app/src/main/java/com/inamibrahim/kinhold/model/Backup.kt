@@ -19,6 +19,8 @@ class BackupData(
     val gallery: Map<Int, List<ByteArray>> = emptyMap(),
     /** Parent links that are not birth links, as (child, parent) to kind. */
     val linkKinds: Map<Pair<Int, Int>, LinkKind> = emptyMap(),
+    /** The permanent id of the person a share file starts from (its main person), or empty. */
+    val rootUid: String = "",
 )
 
 /** A backup file that cannot be used. [message] is written for the person, not for a programmer. */
@@ -44,6 +46,7 @@ object BackupCodec {
         photos: Map<Int, ByteArray> = emptyMap(),
         details: TreeDetails = TreeDetails.Empty,
         gallery: Map<Int, List<ByteArray>> = emptyMap(),
+/** The permanent id of the person a share file starts from; written as "root" so the receiver can ask who that person is. */        rootUid: String = "",
     ): String {
         val people = JSONArray()
         val base64 = java.util.Base64.getEncoder()
@@ -79,6 +82,7 @@ object BackupCodec {
             .put("format", FORMAT)
             .put("version", VERSION)
             .put("created", created)
+.apply { if (rootUid.isNotEmpty()) put("root", rootUid) }
             .put("people", people)
             .put("parentLinks", JSONArray().apply { for ((c, p) in family.parentLinks()) put(JSONArray().put(c).put(p).also { a -> family.kindOf(c, p).takeIf { it != LinkKind.Birth }?.let { k -> a.put(k.ordinal) } }) })
             .put("partnerships", pairs(family.partnerships()))
@@ -200,6 +204,7 @@ object BackupCodec {
             return BackupData(
                 people, links, partnerships, root.optString("created", ""), photos,
                 TreeDetails(personEvents, personSources, coupleEvents, personFields), gallery, kinds,
+                root.optString("root", "").takeIf { r -> r.isNotEmpty() && people.any { it.uid == r } } ?: "",
             )
         } catch (e: JSONException) {
             throw BackupException(DAMAGED)

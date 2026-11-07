@@ -129,15 +129,15 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
                 DialogButton("Enter a Hijri date instead", { hijri = true }, kind = ButtonKind.Neutral)
                 Label("Year")
                 Field("Year (for example 1950)", year, { year = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EqualRow(4) {
                     for (step in listOf(-10, -1, 1, 10)) {
-                        PickChip(if (step > 0) "+$step" else "−${-step}", false, true) { year = ((y ?: 1950) + step).coerceIn(0, 9999).toString() }
+                        PickChip(if (step > 0) "+$step" else "−${-step}", false, true, modifier = Modifier.weight(1f)) { year = ((y ?: 1950) + step).coerceIn(0, 9999).toString() }
                     }
                 }
                 Label("Month", Modifier.padding(top = 6.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EqualRow(3) {
                     PartialDate.MONTH_NAMES.forEachIndexed { i, name ->
-                        PickChip(name, month == i + 1, canMonth) { month = if (month == i + 1) 0 else i + 1 }
+                        PickChip(name, month == i + 1, canMonth, modifier = Modifier.weight(1f)) { month = if (month == i + 1) 0 else i + 1 }
                     }
                 }
                 if (month != 0) {
@@ -164,9 +164,9 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
 }
 
 @Composable
-private fun PickChip(label: String, selected: Boolean, enabled: Boolean, round: Boolean = false, onClick: () -> Unit) {
+private fun PickChip(label: String, selected: Boolean, enabled: Boolean, round: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        Modifier
+        modifier
             .then(if (round) Modifier.size(40.dp) else Modifier)
             .clip(if (round) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(50))
             .background(if (selected) Palette.Accent else Palette.SurfaceHigh)
@@ -390,8 +390,8 @@ private fun HijriPickerDialog(onDone: (PartialDate) -> Unit, onDismiss: () -> Un
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Field("Hijri year (for example 1367)", year, { year = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number)
                 Label("Month")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    com.inamibrahim.kinhold.model.HijriDates.MONTH_NAMES.forEachIndexed { i, name -> PickChip(name, month == i + 1, true) { month = if (month == i + 1) 0 else i + 1 } }
+                EqualRow(3) {
+                    com.inamibrahim.kinhold.model.HijriDates.MONTH_NAMES.forEachIndexed { i, name -> PickChip(name, month == i + 1, true, modifier = Modifier.weight(1f)) { month = if (month == i + 1) 0 else i + 1 } }
                 }
                 Label("Day")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

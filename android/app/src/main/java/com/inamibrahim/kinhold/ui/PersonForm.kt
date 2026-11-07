@@ -264,10 +264,10 @@ fun PersonFormScreen(
                         Field("Surname", surname, { surname = it }, Modifier.fillMaxWidth())
                         Column {
                             Label("Sex", Modifier.padding(bottom = 8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Pill("Male", sex == Sex.Male, { sex = Sex.Male })
-                                Pill("Female", sex == Sex.Female, { sex = Sex.Female })
-                                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown })
+                            EqualRow(3) {
+                                Pill("Male", sex == Sex.Male, { sex = Sex.Male }, Modifier.weight(1f))
+                                Pill("Female", sex == Sex.Female, { sex = Sex.Female }, Modifier.weight(1f))
+                                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown }, Modifier.weight(1f))
                             }
                         }
                     }
@@ -275,8 +275,8 @@ fun PersonFormScreen(
                     if (linkChoice) {
                         FormCard("How are they linked?", Icons.Filled.Favorite, Tones.Rose) {
                             Text("Birth is the usual choice. Adoptive, foster and step parents and children are also kept, and a person can have up to ${Family.MAX_PARENTS} parents.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
-                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (k in LinkKind.entries) Pill(k.label.replace(" parent", ""), linkKind == k, { linkKindName = k.name })
+                            EqualRow(2) {
+                                for (k in LinkKind.entries) Pill(k.label.replace(" parent", ""), linkKind == k, { linkKindName = k.name }, Modifier.weight(1f))
                             }
                         }
                     }

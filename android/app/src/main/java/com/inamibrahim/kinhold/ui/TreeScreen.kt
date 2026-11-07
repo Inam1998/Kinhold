@@ -8,6 +8,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Close
@@ -59,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -70,6 +76,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.inamibrahim.kinhold.data.Relation
+import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.ageText
@@ -88,6 +95,13 @@ fun TreeScreen(
     onFocus: (Int) -> Unit,
     onAdd: (Relation) -> Unit,
     onAddChild: (Int) -> Unit,
+    onQuickAdd: (PersonDraft, Relation) -> Unit,
+    sampleLoaded: Boolean,
+    onClearTree: () -> Unit,
+    cardCollapsed: Boolean,
+    onToggleCard: () -> Unit,
+    onKeepSample: () -> Unit,
+    suggest: (Relation) -> PersonDraft,
     onEdit: (Int) -> Unit,
     onMe: () -> Unit,
     onDetails: (Int) -> Unit,
@@ -98,9 +112,17 @@ fun TreeScreen(
     onUndo: () -> Unit,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
+    var quickAdding by rememberSaveable { mutableStateOf(false) }
+    var clearing by rememberSaveable { mutableStateOf(false) }
+    var keeping by rememberSaveable { mutableStateOf(false) }
+    if (clearing) ClearSampleDialog(family.size, { clearing = false; onClearTree() }, { clearing = false })
+    if (keeping) KeepSampleDialog({ keeping = false; onKeepSample() }, { keeping = false })
     // Back closes the search first, and only then leaves the tree.
     androidx.activity.compose.BackHandler(enabled = searching) { searching = false }
     val layout = remember(family, focusId) { layoutFocus(family, focusId) }
+    // Placed before the first draw, so the new tree never flashes in the old position; see TreeViewState.prepareSlide.
+    remember(layout) { state.prepareSlide(layout) }
+    val slideScope = androidx.compose.runtime.rememberCoroutineScope()
 
     val focus = family.person(focusId)
 
@@ -108,80 +130,140 @@ fun TreeScreen(
     LaunchedEffect(layout, state.size) {
         state.adopt(layout)
         if (state.size.width > 0 && state.framedFocus != layout.focusId) {
-            state.show(layout)
             state.framedFocus = layout.focusId
+            state.slideOrShow(layout, slideScope)
+        } else if (state.size.width > 0 && state.framedFocus == layout.focusId && state.size != state.framedSize && !state.userMoved) {
+            state.reframe(layout, slideScope)
         }
     }
 
-    ScreenBackground {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
-            ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
-            val now = System.currentTimeMillis()
-            val backupText = lastBackup?.let { "Backed up ${describeAge(it, now)}" } ?: "Not backed up yet"
-            // Worth a nudge once there is real work to lose: amber when never backed up, or not for a month.
-            val stale = family.size >= 5 && (lastBackup == null || now - lastBackup > 30L * 86_400_000L)
-            Text(
-                buildAnnotatedString {
-                    append("%,d %s in this tree  ·  ".format(family.size, if (family.size == 1) "person" else "people"))
-                    withStyle(SpanStyle(color = if (stale) Tones.Amber else Palette.TextMuted)) { append(backupText) }
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.TextMuted,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
-            )
-            Box(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
-                TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
-                if (!searching) {
-                    Pill("Recenter", false, { state.show(layout) }, Modifier.align(Alignment.TopEnd).padding(end = 20.dp, top = 4.dp).shadow(4.dp, RoundedCornerShape(50)), icon = Icons.Filled.Refresh)
-                }
-                if (searching) {
-                    SearchPanel(
-                        family = family,
-                        onOldest = { family.oldest()?.let { onFocus(it.id) }; searching = false },
-                        onClose = { searching = false },
-                        onPick = {
-                            onFocus(it.id)
-                            searching = false
-                        },
-                        modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 20.dp),
-                    )
+    if (quickAdding) QuickAddDialog(family, focusId, suggest, onQuickAdd) { quickAdding = false }
+
+    val landscape = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
+
+    val header: @Composable () -> Unit = {
+        ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
+        val now = System.currentTimeMillis()
+        val backupText = lastBackup?.let { "Backed up ${describeAge(it, now)}" } ?: "Not backed up yet"
+        // Worth a nudge once there is real work to lose: amber when never backed up, or not for a month.
+        val stale = family.size >= 5 && (lastBackup == null || now - lastBackup > 30L * 86_400_000L)
+        Text(
+            buildAnnotatedString {
+                append("%,d %s in this tree  ·  ".format(family.size, if (family.size == 1) "person" else "people"))
+                withStyle(SpanStyle(color = if (stale) Tones.Amber else Palette.TextMuted)) { append(backupText) }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = Palette.TextMuted,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
+        )
+    }
+    val banner: @Composable () -> Unit = {
+        androidx.compose.animation.AnimatedVisibility(sampleLoaded && !searching) {
+            AppCard(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp).fillMaxWidth()) {
+                Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("This is a sample family.", style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.weight(1f))
+                    DialogButton("Keep", { keeping = true }, kind = ButtonKind.Neutral)
+                    DialogButton("Clear", { clearing = true }, Modifier.padding(start = 6.dp), kind = ButtonKind.Danger)
                 }
             }
-            if (undoText != null && !searching) {
-                AppCard(Modifier.padding(horizontal = 20.dp).fillMaxWidth()) {
-                    Row(
-                        Modifier.padding(start = 20.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(undoText, style = MaterialTheme.typography.bodyLarge, color = Palette.Text, modifier = Modifier.weight(1f))
-                        DialogButton("Undo", onUndo, Modifier.padding(vertical = 8.dp), kind = ButtonKind.Tonal)
-                    }
+        }
+    }
+    val treeBox: @Composable (Modifier) -> Unit = { boxModifier ->
+        Box(boxModifier.fillMaxWidth()) {
+            TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
+            androidx.compose.animation.AnimatedVisibility(!searching, Modifier.align(Alignment.TopCenter), enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Pill("Quick add", false, { quickAdding = true }, Modifier.shadow(4.dp, RoundedCornerShape(50)), icon = Icons.Filled.Add)
+                    Pill("Recenter", false, { state.reframe(layout, slideScope) }, Modifier.shadow(4.dp, RoundedCornerShape(50)), icon = Icons.Filled.Refresh)
                 }
             }
-            // Below the tree, not over it, so the rows at the bottom are never hidden behind the card.
-            if (!searching) {
-                FocusCard(
+            androidx.compose.animation.AnimatedVisibility(
+                searching,
+                Modifier.align(Alignment.TopCenter),
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it / 3 },
+                exit = androidx.compose.animation.fadeOut(),
+            ) {
+                SearchPanel(
                     family = family,
-                    person = focus,
-                    onAdd = onAdd,
-                    onAddChild = { onAddChild(focus.id) },
-                    onEdit = { onEdit(focus.id) },
-                    onDetails = { onDetails(focus.id) },
-                    onFocus = onFocus,
-                    modifier = Modifier
-                        .padding(start = 20.dp, end = 20.dp, top = 12.dp)
-                        .fillMaxWidth(),
+                    onOldest = { family.oldest()?.let { onFocus(it.id) }; searching = false },
+                    onClose = { searching = false },
+                    onPick = {
+                        onFocus(it.id)
+                        searching = false
+                    },
+                    modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }
-            FloatingNav(
-                listOf(
-                    NavItem("Me", Icons.Filled.Person, false) { onMe(); state.show(layout) },
-                    NavItem("Find", Icons.Filled.Search, searching) { searching = !searching },
-                    NavItem("More", Icons.Filled.Menu, false, onMore),
-                ),
-                Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
+        }
+    }
+    val undoBar: @Composable () -> Unit = {
+        androidx.compose.animation.AnimatedVisibility(undoText != null && !searching) {
+            AppCard(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp).fillMaxWidth()) {
+                Row(
+                    Modifier.padding(start = 20.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(undoText.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = Palette.Text, modifier = Modifier.weight(1f))
+                    DialogButton("Undo", onUndo, Modifier.padding(vertical = 8.dp), kind = ButtonKind.Tonal)
+                }
+            }
+        }
+    }
+    val card: @Composable () -> Unit = {
+        androidx.compose.animation.AnimatedVisibility(!searching) {
+            FocusCard(
+                family = family,
+                person = focus,
+                onAdd = onAdd,
+                onAddChild = { onAddChild(focus.id) },
+                onEdit = { onEdit(focus.id) },
+                onDetails = { onDetails(focus.id) },
+                onFocus = onFocus,
+                collapsed = cardCollapsed,
+                onToggle = onToggleCard,
+                modifier = Modifier
+                    .padding(start = 20.dp, end = 20.dp, top = 12.dp)
+                    .fillMaxWidth(),
             )
+        }
+    }
+    val nav: @Composable (Modifier) -> Unit = { navModifier ->
+        FloatingNav(
+            listOf(
+                NavItem("Me", Icons.Filled.Person, false) { onMe(); state.reframe(layout, slideScope) },
+                NavItem("Find", Icons.Filled.Search, searching) { searching = !searching },
+                NavItem("More", Icons.Filled.Menu, false, onMore),
+            ),
+            navModifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
+        )
+    }
+
+    ScreenBackground(maxContentWidth = androidx.compose.ui.unit.Dp.Infinity) {
+        if (landscape) {
+            // Wide and short: the tree gets the whole left side and everything else sits in a column on the right.
+            Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.displayCutout).imePadding()) {
+                treeBox(Modifier.weight(1f).fillMaxHeight())
+                Column(Modifier.width(380.dp).fillMaxHeight()) {
+                    Column(Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                        header()
+                        banner()
+                        undoBar()
+                        card()
+                    }
+                    nav(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
+                header()
+                banner()
+                treeBox(Modifier.weight(1f).padding(top = 12.dp))
+                undoBar()
+                // Below the tree, not over it, so the rows at the bottom are never hidden behind the card.
+                card()
+                nav(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+            }
         }
     }
 }
@@ -196,6 +278,8 @@ private fun FocusCard(
     onEdit: () -> Unit,
     onDetails: () -> Unit,
     onFocus: (Int) -> Unit,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val parents = family.parentsOf(person.id).size
@@ -204,8 +288,8 @@ private fun FocusCard(
     AppCard(modifier) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(person, 64.dp, ring = 3.dp)
-                Column(Modifier.padding(start = 16.dp)) {
+                Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 48.dp else 64.dp, androidx.compose.animation.core.tween(280), label = "avatar").value, ring = 3.dp)
+                Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         if (person.isMe) {
@@ -229,7 +313,16 @@ private fun FocusCard(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(Palette.SurfaceHigh).clickable(onClick = onToggle),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val turn by androidx.compose.animation.core.animateFloatAsState(if (collapsed) 180f else 0f, androidx.compose.animation.core.tween(280), label = "chevron")
+                    androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowDown, if (collapsed) "Show actions" else "Hide actions", tint = Palette.Text, modifier = Modifier.rotate(turn))
+                }
             }
+            androidx.compose.animation.AnimatedVisibility(!collapsed) {
+            Column {
             // Siblings, half-siblings and step relatives, worked out from the links. Tapping one moves the focus to them.
             // At most four are shown here (the rest are on the Details page), wrapping instead of scrolling sideways.
             val relatives = remember(family, person.id) { family.relativesOf(person.id) }
@@ -265,14 +358,20 @@ private fun FocusCard(
                     }
                 }
             }
-            // Every action fits on one row: icons over labels, equal widths, nothing hidden off the edge.
+            // Two rows of equal icon tiles, so six actions never get cramped or hidden off the edge.
+            val sibling = remember(family, person.id) { siblingRelation(family, person.id) }
             Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky)
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
-                // A person has at most two parents, but can have any number of spouses.
+                // A person can have up to four parents recorded (birth, adoptive, foster, step) and any number of spouses.
                 if (parents < Family.MAX_PARENTS) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet)
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sibling != null) ActionTile("Sibling", Icons.AutoMirrored.Filled.ArrowForward, { onAdd(sibling) }, Modifier.weight(1f), tone = Tones.Teal)
                 ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose)
                 ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint)
+            }
+            }
             }
         }
     }

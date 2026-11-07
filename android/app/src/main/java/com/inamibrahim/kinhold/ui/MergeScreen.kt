@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.inamibrahim.kinhold.data.KinholdViewModel
 import com.inamibrahim.kinhold.data.MergeSession
+import com.inamibrahim.kinhold.model.Anchor
+import com.inamibrahim.kinhold.model.AttachKind
 import com.inamibrahim.kinhold.model.Candidate
 import com.inamibrahim.kinhold.model.FieldChange
 import com.inamibrahim.kinhold.model.MergeResult
@@ -43,11 +45,39 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
     var done by remember(session) { mutableStateOf<MergeResult?>(null) }
     var error by remember(session) { mutableStateOf<String?>(null) }
     var working by remember(session) { mutableStateOf(false) }
+    val backupFirst = rememberBackupFirst(vm, vm.family.value.size)
 
-    val matches = remember(session, accepted) { plan.matchesFor(accepted) }
-    val changes = remember(session, accepted) { plan.fieldChanges(matches) }
+    var anchor by remember(session) { mutableStateOf<Anchor?>(null) }
+    var anchorStep by remember(session) { mutableStateOf(0) } // 1 = choose who they are, 2 = choose who to attach to
+    var attachTo by remember(session) { mutableStateOf<Int?>(null) }
+    val myTree = vm.family.value
+    val matches = remember(session, accepted, anchor) { plan.matchesFor(accepted, anchor) }
+    val changes = remember(session, accepted, anchor) { plan.fieldChanges(matches) }
     val useHis = remember(changes, overrides) { changes.filter { overrides[it.key] ?: it.isFill }.map { it.key }.toSet() }
-    val result = remember(session, accepted, useHis, addEvents) { plan.resolve(accepted, useHis, addEvents) }
+    val result = remember(session, accepted, useHis, addEvents, anchor) { plan.resolve(accepted, useHis, addEvents, anchor) }
+
+    plan.rootIncomingId?.let { rootId ->
+        val rootName = plan.incomingPerson(rootId).name
+        if (anchorStep == 1) PersonPickerDialog(myTree, "Who is $rootName in your tree?", { anchor = Anchor.Same(it); anchorStep = 0 }, { anchorStep = 0 })
+        if (anchorStep == 2) PersonPickerDialog(myTree, "Attach $rootName to whom?", { attachTo = it; anchorStep = 0 }, { anchorStep = 0 })
+        attachTo?.let { x ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { attachTo = null },
+                containerColor = Palette.Surface,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                title = { Text("$rootName is the … of ${myTree.person(x).name}", color = Palette.Text) },
+                text = {
+                    EqualRow(2) {
+                        for (k in AttachKind.entries) {
+                            if (k == AttachKind.Sibling && myTree.parentsOf(x).isEmpty()) continue
+                            Pill(k.label.replaceFirstChar { it.uppercase() }, false, { anchor = Anchor.Attach(x, k); attachTo = null }, Modifier.weight(1f))
+                        }
+                    }
+                },
+                confirmButton = { DialogButton("Cancel", { attachTo = null }, kind = ButtonKind.Neutral) },
+            )
+        }
+    }
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
@@ -74,6 +104,32 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
                                 color = Palette.TextMuted,
                                 modifier = Modifier.padding(top = 6.dp),
                             )
+                        }
+                    }
+                }
+                plan.rootIncomingId?.let { rootId ->
+                    item {
+                        val rootName = plan.incomingPerson(rootId).name
+                        val mineId = matches[rootId]
+                        val a = anchor
+                        AppCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("This branch starts with $rootName", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                                Text(
+                                    when {
+                                        mineId != null -> "In your tree this is ${plan.currentPerson(mineId).name}. Everyone else in the file is placed around them."
+                                        a is Anchor.Attach -> "$rootName is new, and will be added as the ${a.kind.label} of ${myTree.person(a.currentId).name}."
+                                        else -> "$rootName is not in your tree yet, so they will be added on their own, with no link to anyone you have."
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Palette.TextMuted,
+                                )
+                                EqualRow(2) {
+                                    Pill(if (mineId != null) "Choose someone else" else "They are already in my tree", false, { anchorStep = 1 }, Modifier.weight(1f))
+                                    if (mineId == null) Pill(if (a is Anchor.Attach) "Change where" else "Attach to someone", false, { anchorStep = 2 }, Modifier.weight(1f))
+                                    if (a != null) Pill("Reset", false, { anchor = null }, Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
@@ -127,11 +183,13 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
                 PrimaryButton(
                     if (working) "Merging…" else "Merge into my tree",
                     {
-                        working = true
-                        error = null
-                        vm.applyMerge(session, accepted, useHis, addEvents) { r ->
-                            working = false
-                            r.fold({ done = it }, { error = it.message ?: "The merge could not be done. Your tree is unchanged." })
+                        backupFirst("Merging this file") {
+                            working = true
+                            error = null
+                            vm.applyMerge(session, accepted, useHis, addEvents, anchor) { r ->
+                                working = false
+                                r.fold({ done = it }, { error = it.message ?: "The merge could not be done. Your tree is unchanged." })
+                            }
                         }
                     },
                     Modifier.fillMaxWidth(),

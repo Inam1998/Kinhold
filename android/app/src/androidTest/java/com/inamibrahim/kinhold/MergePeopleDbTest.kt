@@ -66,18 +66,20 @@ class MergePeopleDbTest {
     }
 
     @Test
-    fun theMergeCanBeUndoneAndAPersonKeepsAtMostTwoParents() = runBlocking {
+    fun theMergeCanBeUndoneAndAPersonKeepsAtMostFourParents() = runBlocking {
         val r = repo()
         val a = r.addPerson(PersonDraft("Dad"))
         val b = r.addPerson(PersonDraft("Mum"))
         val c = r.addPerson(PersonDraft("Step"))
         val one = r.addPerson(PersonDraft("Kid"), Relation.ChildOf(a, b))
         val two = r.addPerson(PersonDraft("Kid"), Relation.ChildOf(c))
+        r.addPerson(PersonDraft("X"), Relation.ParentOf(two))
+        r.addPerson(PersonDraft("Y"), Relation.ParentOf(two))
         r.mergePeople(one, two)
-        assertEquals(2, r.family.value.parentsOf(one).size) // the third parent link is dropped
+        assertEquals(4, r.family.value.parentsOf(one).size) // the fifth parent link is dropped
         assertTrue(r.hasSafetyCopy())
         r.undoRestore()
-        assertEquals(5, r.family.value.size)
+        assertEquals(7, r.family.value.size)
         assertEquals(setOf("Kid"), r.family.value.people.filter { it.given == "Kid" }.map { it.given }.toSet())
         assertEquals(2, r.family.value.people.count { it.given == "Kid" })
     }

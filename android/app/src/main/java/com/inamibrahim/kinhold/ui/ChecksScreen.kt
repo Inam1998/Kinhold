@@ -58,7 +58,7 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-            ScreenHeader("Tree health", "Checks", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
+            ScreenHeader("Tree health", "Checks", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), onBack = onBack)
             val r = result
             val dups = r?.duplicates.orEmpty().filter { listOf(it.a.uid, it.b.uid).sorted().joinToString("|") !in dismissed }
             LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -74,10 +74,10 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                                 Text("${d.a.name}  and  ${d.b.name}", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                                 Text("${d.a.lifeDates().ifEmpty { "no dates" }}  ·  ${d.b.lifeDates().ifEmpty { "no dates" }}", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                                 Text("Why: ${d.why}.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
-                                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    DialogButton("Join, keep first", { joining = d.a to d.b }, kind = ButtonKind.Tonal)
-                                    DialogButton("Join, keep second", { joining = d.b to d.a }, kind = ButtonKind.Tonal)
-                                    DialogButton("Not the same", { vm.dismissDuplicate(d.a.uid, d.b.uid); dismissed = vm.dismissedDuplicates() }, kind = ButtonKind.Neutral)
+                                EqualRow(2) {
+                                    DialogButton("Join, keep first", { joining = d.a to d.b }, Modifier.weight(1f), kind = ButtonKind.Tonal)
+                                    DialogButton("Join, keep second", { joining = d.b to d.a }, Modifier.weight(1f), kind = ButtonKind.Tonal)
+                                    DialogButton("Not the same", { vm.dismissDuplicate(d.a.uid, d.b.uid); dismissed = vm.dismissedDuplicates() }, Modifier.weight(1f), kind = ButtonKind.Neutral)
                                 }
                             }
                         }
@@ -95,7 +95,6 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                 }
                 item { Column(Modifier.padding(bottom = 8.dp)) {} }
             }
-            DialogButton("Back", onBack, Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 20.dp, vertical = 12.dp), kind = ButtonKind.Neutral)
         }
     }
 
