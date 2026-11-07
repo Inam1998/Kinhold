@@ -212,6 +212,24 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Draws the chart around [rootId] and writes it as a PDF or a PNG to the place the person chose. */
+    fun exportChart(uri: Uri, rootId: Int, pdf: Boolean, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val family = repo.family.value
+                    require(rootId in family) { "That person is no longer in the tree." }
+                    val layout = com.inamibrahim.kinhold.tree.layoutFocus(family, rootId)
+                    val title = "Family tree of ${family.person(rootId).name}"
+                    val bytes = if (pdf) TreeExport.pdf(layout, title) else TreeExport.png(layout, title)
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Could not open the file to write to.")
+                    out.use { it.write(bytes) }
+                }
+            }
+            onResult(result)
+        }
+    }
+
     /** A file waiting to be merged, with the comparison against the tree. Kept here so it survives a screen rotation. */
     var mergeSession by mutableStateOf<MergeSession?>(null)
         private set

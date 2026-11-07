@@ -107,9 +107,11 @@ object HelpGuide {
                 HelpSection("Is this the same person?", "People who travelled from one Kinhold to another are matched for sure. Others are suggested by name, birth year and relatives in common. A strong suggestion starts as the same person, a weaker one as a different person, and you can change either."),
                 HelpSection("Fields that differ", "For people in both trees you see each field that differs. Where yours is empty or less exact it starts as use theirs, and where the two disagree it starts as keep mine. Choose for each field, or fill all your empty fields at once."),
                 HelpSection("Undo", "A copy of your tree is kept first. Choose Undo this merge, or later Undo the last restore or import in Backup."),
+                HelpSection("A picture or a PDF", "On the Share screen, Print or send a picture saves a chart of what the tree shows around that person, as a PDF to print or a PNG picture to send. It is drawn in light colours with dark text so it prints well."),
             ),
             limits = listOf(
                 "Share files, like backups, are not encrypted. Send them only to people you trust.",
+                "The chart shows only what the tree screen shows: three generations above and two below the person, with names and years but no photos. It is a picture, so the people in it cannot be merged by anyone who receives it.",
                 "Phone numbers, email addresses, addresses, map pins and your own custom facts are left out of a share file unless you switch on Contact details and own facts. The tree owner mark (This is me) is never sent.",
                 "Leaving out people who may be alive is a guess: it leaves out anyone with no death date born in the last 110 years, and keeps people with no dates at all.",
                 "Two people with the same name and no birth year or relatives in common are only offered as a possible match, never merged without your answer.",

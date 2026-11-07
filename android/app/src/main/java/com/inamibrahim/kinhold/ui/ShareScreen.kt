@@ -7,6 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -63,6 +66,10 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
             }
         }
     }
+
+    val chartDone = { r: Result<Unit> -> message = r.fold({ "Chart saved." to false }, { (it.message ?: "The chart could not be saved.") to true }) }
+    val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri -> if (uri != null) vm.exportChart(uri, person.id, true, chartDone) }
+    val pngSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) vm.exportChart(uri, person.id, false, chartDone) }
 
     ScreenBackground {
         Column(
@@ -127,6 +134,24 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                         { saver.launch("kinhold-share-${person.name.replace(' ', '-')}-${LocalDate.now()}.json") },
                         Modifier.fillMaxWidth(),
                     )
+                }
+            }
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ToneIcon(Icons.Filled.Share, Tones.Violet, 36.dp)
+                        Text("Print or send a picture", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
+                    }
+                    Text(
+                        "A chart of what the tree shows around ${person.name} (three generations above, two below), as a PDF to print or a picture to send to people who do not use Kinhold. Names and years only.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+                    )
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DialogButton("Save as PDF", { pdfSaver.launch("kinhold-tree-${person.name.replace(' ', '-')}.pdf") }, kind = ButtonKind.Tonal)
+                        DialogButton("Save as picture", { pngSaver.launch("kinhold-tree-${person.name.replace(' ', '-')}.png") }, kind = ButtonKind.Tonal)
+                    }
                 }
             }
             Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 16.dp))
