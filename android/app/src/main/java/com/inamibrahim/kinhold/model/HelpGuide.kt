@@ -31,7 +31,7 @@ object HelpGuide {
                 HelpSection("Just looking around?", "The start screen can fill the tree with an invented family. They are ordinary entries you can edit, delete or replace by restoring a backup."),
             ),
             limits = listOf(
-                "A person can have at most two parents.",
+                "A person can have up to four parents recorded: birth, adoptive, foster and step.",
                 "Only a year is needed for a date. A day and month are optional, and some programs' \"about\" and \"between\" dates are not kept as such.",
             ),
         ),
@@ -66,6 +66,7 @@ object HelpGuide {
                 HelpSection("Dates and age", "Tap a date box to open the date picker: type or step the year, then touch a month and a day. A living person's age shows on their card and Details page, worked out from their birth date."),
                 HelpSection("Who you are", "Open More, then Settings, then Who are you, and choose your own card. The tree then marks you with a YOU badge, opens on you, and the Me button at the bottom brings the tree back to you from anywhere."),
                 HelpSection("Starting values", "A new child starts with their father's surname and a new spouse with the opposite sex. You can change both."),
+                HelpSection("Adoptive, foster and step parents", "When you add a parent or a child, choose how they are linked: Birth, Adoptive, Foster or Step. On a person's Details page, Parents lists each parent with the kind of link, and Change lets you correct it. Adoptive parents count as ancestors in How are we related, foster and step parents do not."),
                 HelpSection("Several marriages", "Choose + Spouse again to add more spouses. The person is drawn in the middle with their spouses on both sides, and each couple's children hang from their own line. When you add a child to someone with several spouses, you are asked who the other parent is."),
             ),
             limits = listOf(
@@ -118,7 +119,7 @@ object HelpGuide {
                 "Phone numbers, email addresses, addresses, map pins and your own custom facts are left out of a share file unless you switch on Contact details and own facts. The tree owner mark (This is me) is never sent.",
                 "Leaving out people who may be alive is a guess: it leaves out anyone with no death date born in the last 110 years, and keeps people with no dates at all.",
                 "Two people with the same name and no birth year or relatives in common are only offered as a possible match, never merged without your answer.",
-                "A person can have at most two parents. If the file gives a person a third parent, that link is skipped and you are told how many.",
+                "A person can have up to four parents. If the file would give a person a fifth, that link is skipped and you are told how many.",
                 "Matching is done again each time you merge. If you confirm a match by hand, merging an updated file later may ask you again.",
                 "Merging adds and fills in. It does not delete anyone, and it does not remove events you have that the file lacks.",
                 "Your choices on the review screen are not kept if you turn the phone while reviewing.",
@@ -135,7 +136,7 @@ object HelpGuide {
             ),
             limits = listOf(
                 "A person with only one recorded parent shows everyone who shares that parent as a sibling, even if some are really half-siblings.",
-                "Adopted, foster and step links are not recorded as such. A parent's spouse who is not a parent is shown as a step-parent, and an adopted child is an ordinary child.",
+                "A parent's spouse who is not recorded as a parent is shown as a step-parent. Foster and step parents you record yourself count as parents here but not as ancestors in How are we related.",
                 "Siblings are listed, not drawn, and at most 30 relatives are shown.",
                 "A couple only counts as ended if you record a divorce or annulment on it. Until then a parent's former partner who is not your parent is shown as a step-parent. A partner who died is not treated as ended.",
             ),
@@ -215,7 +216,7 @@ object HelpGuide {
                 HelpSection("Exporting", "Open Backup, then Save as a GEDCOM file."),
             ),
             limits = listOf(
-                "Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates such as \"about 1850\" or \"between 1800 and 1810\" keep only their first date.",
+                "Adoptive and foster links are read from and written to GEDCOM (the pedigree type); a step link is written with a type other programs may ignore. Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates such as \"about 1850\" or \"between 1800 and 1810\" keep only their first date.",
                 "Not kept: photos and other files, identity numbers, church ordinances, email and web addresses, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
                 "Citations for a birth or a death become sources of the person, with a note saying which.",
                 "Add does not match people who are already in your tree, so adding the same file twice makes duplicates.",
@@ -298,7 +299,7 @@ object HelpGuide {
                 "The checks only read your tree. Nothing is fixed for you, and a warning can be wrong: a parent who really was young, or a person who really lived past 110.",
                 "Only people with the same surname are compared for duplicates, so someone entered under two different surnames will not be found.",
                 "Parents and children, spouses, and people of different sex are never offered as duplicates.",
-                "A person keeps at most two parents when joined, so an extra parent link from the removed entry is dropped.",
+                "A person keeps at most four parents when joined, so an extra parent link from the removed entry is dropped.",
                 "Dates with only a year are compared by year, so a marriage and a birth in the same year are not flagged.",
             ),
         ),

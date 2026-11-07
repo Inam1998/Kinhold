@@ -21,7 +21,7 @@ object Relationships {
         while (level.isNotEmpty() && steps < 12) {
             steps++
             val next = ArrayList<Int>()
-            for (id in level) for (p in family.parentsOf(id)) {
+            for (id in level) for (p in family.lineageParentsOf(id)) {
                 if (p.id in out) continue
                 val first = out.getValue(id).via ?: p.id
                 out[p.id] = Reach(steps, first, out.getValue(id).viaPath + p.id)

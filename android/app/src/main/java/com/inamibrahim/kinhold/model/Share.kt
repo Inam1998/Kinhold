@@ -54,6 +54,7 @@ object Share {
         family.people.filter { it.id in ids }.map { it.withoutPrivateDetails(keepContact) },
         family.parentLinks().filter { (c, p) -> c in ids && p in ids },
         family.partnerships().filter { (a, b) -> a in ids && b in ids },
+        linkKinds = family.linkKinds().filterKeys { (c, p) -> c in ids && p in ids },
     )
 
     /** The events and sources of the people in [ids] (and of couples where both are in it). */

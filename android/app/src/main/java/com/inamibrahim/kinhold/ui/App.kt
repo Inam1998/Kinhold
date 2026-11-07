@@ -353,11 +353,12 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     initialDetails = initialDetails,
                     spouses = formSpouses(family, editing?.id, form.relation),
                     onPreparePhoto = vm::preparePhoto,
-                    onSave = { draft, photo, details ->
+                    linkChoice = editing == null && (form.relation is Relation.ParentOf || form.relation is Relation.ChildOf),
+                    onSave = { draft, photo, details, linkKind ->
                         if (editing != null) {
                             vm.update(editing.id, draft, photo, details) { screen = backTo }
                         } else {
-                            vm.add(draft, form.relation, (photo as? PhotoChange.Set)?.photo, details) { id ->
+                            vm.add(draft, form.relation, (photo as? PhotoChange.Set)?.photo, details, linkKind) { id ->
                                 // The first person becomes the focus; anyone added to a relative leaves the focus where it was.
                                 if (form.relation == null) focusId = id
                                 screen = Screen.Tree

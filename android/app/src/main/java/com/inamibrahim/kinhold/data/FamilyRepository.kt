@@ -12,6 +12,7 @@ import com.inamibrahim.kinhold.model.Event
 import com.inamibrahim.kinhold.model.EventKind
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.GeoPin
+import com.inamibrahim.kinhold.model.LinkKind
 import com.inamibrahim.kinhold.model.Limits
 import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Merge
@@ -61,6 +62,7 @@ class DeletedPerson(
     val photo: PreparedPhoto? = null,
     val details: PersonDetails = PersonDetails.Empty,
     val gallery: List<PreparedPhoto> = emptyList(),
+    val linkKinds: Map<Pair<Int, Int>, LinkKind> = emptyMap(),
 )
 
 /**
@@ -84,30 +86,42 @@ class FamilyRepository(
         withContext(Dispatchers.IO) { _family.value = read() }
     }
 
-    /** Adds a person, connected to someone already in the tree if [relation] is given. Returns the new id. */
+    /**
+     * Adds a person, connected to someone already in the tree if [relation] is given. [linkKind] says how the new link
+     * between parent and child is meant: a birth link (the default), adoptive, foster or step. Returns the new id.
+     */
     suspend fun addPerson(
         draft: PersonDraft,
         relation: Relation? = null,
         photo: PreparedPhoto? = null,
         details: PersonDetails = PersonDetails.Empty,
+        linkKind: LinkKind = LinkKind.Birth,
     ): Int = changing { db ->
         val id = db.insertPerson(draft)
         photo?.let { db.putPhoto(id, it) }
         when (relation) {
             null -> Unit
             is Relation.ParentOf -> {
-                db.insertLink(child = relation.childId, parent = id)
-                // If the child already had another parent, the two parents are a couple.
-                for (other in db.parentsOf(relation.childId)) if (other != id) db.insertPartnership(id, other)
+                val others = db.parentsOf(relation.childId)
+                db.insertLink(child = relation.childId, parent = id, kind = linkKind)
+                // If the child already had exactly one other parent and both are birth parents, the two are a couple.
+                // Adoptive, foster and step parents are not made a couple of anyone automatically.
+                if (linkKind == LinkKind.Birth && others.size == 1 && db.linkKind(relation.childId, others[0]) == LinkKind.Birth) db.insertPartnership(id, others[0])
             }
             is Relation.ChildOf -> {
-                db.insertLink(child = id, parent = relation.parentId)
-                relation.otherParentId?.let { db.insertLink(child = id, parent = it) }
+                db.insertLink(child = id, parent = relation.parentId, kind = linkKind)
+                relation.otherParentId?.let { db.insertLink(child = id, parent = it, kind = linkKind) }
             }
             is Relation.SpouseOf -> db.insertPartnership(relation.personId, id)
         }
         db.putDetails(id, details)
         id
+    }
+
+    /** Changes how a child is linked to a parent (birth, adoptive, foster or step). */
+    suspend fun setLinkKind(child: Int, parent: Int, kind: LinkKind) = changing { db ->
+        db.update("parent_link", ContentValues().apply { put("kind", kind.ordinal) }, "child_id = ? AND parent_id = ?", arrayOf(child.toString(), parent.toString()))
+        Unit
     }
 
     /**
@@ -193,6 +207,7 @@ class FamilyRepository(
             photo = db.readPhoto(id),
             details = db.readDetails(id, snapshot.spousesOf(id).map { it.id }),
             gallery = db.readGalleryOf(id),
+            linkKinds = snapshot.linkKinds().filterKeys { (c, p) -> c == id || p == id },
         )
         db.delete("person", "id = ?", arrayOf(id.toString()))
         record
@@ -202,8 +217,8 @@ class FamilyRepository(
     suspend fun restoreDeleted(deleted: DeletedPerson) = changing { db ->
         db.insertWithId(deleted.person.id, deleted.person.toDraft(), deleted.person.isMe)
         deleted.photo?.let { db.putPhoto(deleted.person.id, it) }
-        for (parent in deleted.parentIds) if (db.exists(parent)) db.insertLink(child = deleted.person.id, parent = parent)
-        for (child in deleted.childIds) if (db.exists(child)) db.insertLink(child = child, parent = deleted.person.id)
+        for (parent in deleted.parentIds) if (db.exists(parent)) db.insertLink(child = deleted.person.id, parent = parent, kind = deleted.linkKinds[deleted.person.id to parent] ?: LinkKind.Birth)
+        for (child in deleted.childIds) if (db.exists(child)) db.insertLink(child = child, parent = deleted.person.id, kind = deleted.linkKinds[child to deleted.person.id] ?: LinkKind.Birth)
         for (partner in deleted.partnerIds) if (db.exists(partner)) db.insertPartnership(deleted.person.id, partner)
         // Couple events come back for partners who are still in the tree (putDetails skips the others).
         db.putDetails(deleted.person.id, deleted.details)
@@ -226,7 +241,7 @@ class FamilyRepository(
         writeSafetyCopy(db, _family.value)
         db.delete("person", null, null)
         for (p in data.people) db.insertWithId(p.id, p.toDraft(), p.isMe)
-        for ((child, parent) in data.parentLinks) db.insertLink(child, parent)
+        for ((child, parent) in data.parentLinks) db.insertLink(child, parent, data.linkKinds[child to parent] ?: LinkKind.Birth)
         for ((a, b) in data.partnerships) db.insertPartnership(a, b)
         for ((id, jpeg) in data.photos) db.putPhoto(id, PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
         db.putTreeDetails(data.details) { it }
@@ -249,7 +264,7 @@ class FamilyRepository(
         // A person whose permanent id is already in this tree is a copy of someone here: the copy gets a new id.
         val taken = db.rawQuery("SELECT uid FROM person", null).use { c -> HashSet<String>().apply { while (c.moveToNext()) c.getString(0)?.let(::add) } }
         for (p in data.people) newIds[p.id] = db.insertPerson(p.toDraft(), if (p.uid in taken) "" else p.uid)
-        for ((child, parent) in data.parentLinks) db.insertLink(newIds.getValue(child), newIds.getValue(parent))
+        for ((child, parent) in data.parentLinks) db.insertLink(newIds.getValue(child), newIds.getValue(parent), data.linkKinds[child to parent] ?: LinkKind.Birth)
         for ((a, b) in data.partnerships) db.insertPartnership(newIds.getValue(a), newIds.getValue(b))
         for ((id, jpeg) in data.photos) db.putPhoto(newIds.getValue(id), PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
         db.putTreeDetails(data.details) { newIds.getValue(it) }
@@ -307,7 +322,7 @@ class FamilyRepository(
         fun resolve(ref: Int): Int = if (ref > 0) ref else newIds.getValue(-ref)
         for ((id, draft) in result.updates) db.update("person", draft.toValues(), "id = ?", arrayOf(id.toString()))
         for ((id, incomingId) in result.photoFills) data.photos[incomingId]?.let { db.putPhoto(id, PreparedPhoto(it, PhotoCodec.thumbOf(it))) }
-        for ((c, p) in result.links) db.insertLink(resolve(c), resolve(p))
+        for ((c, p) in result.links) db.insertLink(resolve(c), resolve(p), result.linkKinds[c to p] ?: LinkKind.Birth)
         for ((a, b) in result.partnerships) db.insertPartnership(resolve(a), resolve(b))
         for (ref in result.personEvents.keys + result.personSources.keys + result.personFields.keys) {
             val id = resolve(ref)
@@ -370,12 +385,12 @@ class FamilyRepository(
         val coupleEvents = partners.associateWith { db.readDetails(removeId, listOf(it)).coupleEvents[it].orEmpty() }
         val keepParents = db.parentsOf(keepId).toMutableList()
         for (p in db.parentsOf(removeId)) {
-            if (keepParents.size >= 2) break
-            if (p != keepId && p !in keepParents) { db.insertLink(keepId, p); keepParents += p }
+            if (keepParents.size >= Family.MAX_PARENTS) break
+            if (p != keepId && p !in keepParents) { db.insertLink(keepId, p, snapshot.kindOf(removeId, p)); keepParents += p }
         }
         for (child in snapshot.childrenOf(removeId)) {
             db.delete("parent_link", "child_id = ? AND parent_id = ?", arrayOf(child.id.toString(), removeId.toString()))
-            if (child.id != keepId) db.insertLink(child.id, keepId)
+            if (child.id != keepId) db.insertLink(child.id, keepId, snapshot.kindOf(child.id, removeId))
         }
         for (x in partners) db.insertPartnership(keepId, x)
         for ((x, events) in coupleEvents) if (events.isNotEmpty()) db.putCoupleEvents(keepId, x, db.readDetails(keepId, listOf(x)).coupleEvents[x].orEmpty() + events)
@@ -472,6 +487,7 @@ class FamilyRepository(
             db.pairs("SELECT child_id, parent_id FROM parent_link"),
             db.pairs("SELECT a_id, b_id FROM partnership"),
             readCouples(db),
+            readLinkKinds(db),
         )
     }
 
@@ -559,10 +575,10 @@ private fun SQLiteDatabase.readPhotos(): Map<Int, ByteArray> {
 private fun SQLiteDatabase.exists(id: Int): Boolean =
     rawQuery("SELECT 1 FROM person WHERE id = ?", arrayOf(id.toString())).use { it.moveToFirst() }
 
-private fun SQLiteDatabase.insertLink(child: Int, parent: Int) {
+private fun SQLiteDatabase.insertLink(child: Int, parent: Int, kind: LinkKind = LinkKind.Birth) {
     insertWithOnConflict(
         "parent_link", null,
-        ContentValues().apply { put("child_id", child); put("parent_id", parent) },
+        ContentValues().apply { put("child_id", child); put("parent_id", parent); put("kind", kind.ordinal) },
         SQLiteDatabase.CONFLICT_IGNORE,
     )
 }
@@ -759,3 +775,15 @@ private fun SQLiteDatabase.readGalleryOf(personId: Int): List<PreparedPhoto> {
     rawQuery("SELECT data, thumb FROM person_photo WHERE person_id = ? ORDER BY id", arrayOf(personId.toString())).use { while (it.moveToNext()) out += PreparedPhoto(it.getBlob(0), it.getBlob(1)) }
     return out
 }
+
+/** The parent links that are not birth links, as (child, parent) to kind. */
+private fun readLinkKinds(db: SQLiteDatabase): Map<Pair<Int, Int>, LinkKind> {
+    val out = HashMap<Pair<Int, Int>, LinkKind>()
+    db.rawQuery("SELECT child_id, parent_id, kind FROM parent_link WHERE kind <> 0", null).use { while (it.moveToNext()) out[it.getInt(0) to it.getInt(1)] = LinkKind.fromOrdinal(it.getInt(2)) }
+    return out
+}
+
+private fun SQLiteDatabase.linkKind(child: Int, parent: Int): LinkKind =
+    rawQuery("SELECT kind FROM parent_link WHERE child_id = ? AND parent_id = ?", arrayOf(child.toString(), parent.toString())).use {
+        if (it.moveToFirst()) LinkKind.fromOrdinal(it.getInt(0)) else LinkKind.Birth
+    }

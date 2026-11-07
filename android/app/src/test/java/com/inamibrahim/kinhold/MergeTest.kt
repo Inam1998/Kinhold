@@ -234,12 +234,12 @@ class MergeTest {
     @Test
     fun peopleAlreadyLinkedAreNotLinkedAgainAndAThirdParentIsSkipped() {
         val mine = Family.of(
-            listOf(p(1, "Inam", uid = uidMe), p(2, "Dad", uid = uidDad), p(3, "Stepdad"), p(4, "Aunt")),
-            listOf(1 to 2, 1 to 3), emptyList(),
+            listOf(p(1, "Inam", uid = uidMe), p(2, "Dad", uid = uidDad), p(3, "Stepdad"), p(4, "Aunt"), p(5, "Foster")),
+            listOf(1 to 2, 1 to 3, 1 to 4, 1 to 5), emptyList(),
         )
         val his = data(listOf(p(10, "Inam", uid = uidMe), p(11, "Dad", uid = uidDad), p(12, "Mum", sex = Sex.Female)), listOf(10 to 11, 10 to 12))
         val r = merge(mine, his).resolve(emptySet(), emptySet(), true)
-        assertEquals(1, r.skippedParentLinks) // Inam already has two parents; Mum is not added as a third
+        assertEquals(1, r.skippedParentLinks) // Inam already has four parents; Mum is not added as a fifth
         assertTrue(r.links.isEmpty())
         assertEquals(listOf(12), r.newPeople)
     }

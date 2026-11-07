@@ -77,6 +77,7 @@ fun PersonPageScreen(
     // Re-read when the person or the tree changes, so a saved edit shows at once.
     val details by produceState<PersonDetails?>(null, family, person.id) { value = loadDetails(person.id) }
     val items = buildItems(family, person, details)
+    var changingParent by remember { mutableStateOf<Person?>(null) }
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
@@ -132,6 +133,25 @@ fun PersonPageScreen(
                     }
                 }
                 item { Column(Modifier.padding(top = 12.dp)) { Text("More photos", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)); GallerySection(vm, person.id) } }
+                val parentList = family.parentsOf(person.id)
+                if (parentList.isNotEmpty()) {
+                    item {
+                        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Parents", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
+                            for (parent in parentList) {
+                                AppCard(Modifier.fillMaxWidth()) {
+                                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(parent.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                                            Text(family.kindOf(person.id, parent.id).label, style = MaterialTheme.typography.bodySmall, color = Tones.Rose)
+                                        }
+                                        DialogButton("Change", { changingParent = parent }, kind = ButtonKind.Neutral)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 items(items) { item ->
                     when (item) {
                         is PageItem.Heading -> Text(
@@ -157,6 +177,9 @@ fun PersonPageScreen(
                 item { Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {} }
             }
         }
+    }
+    changingParent?.let { parent ->
+        LinkKindDialog(person, parent, family.kindOf(person.id, parent.id), { vm.setLinkKind(person.id, parent.id, it); changingParent = null }, { changingParent = null })
     }
 }
 
@@ -205,4 +228,24 @@ private fun buildItems(family: Family, person: Person, details: PersonDetails?):
         for (s in details.sources) out += PageItem.SourceItem(s)
     }
     return out
+}
+
+/** Choose how a child is linked to one parent: birth, adoptive, foster or step. */
+@Composable
+private fun LinkKindDialog(child: Person, parent: Person, current: com.inamibrahim.kinhold.model.LinkKind, onPick: (com.inamibrahim.kinhold.model.LinkKind) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.Surface,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+        title = { Text("${parent.name} is ${child.name}'s…", color = Palette.Text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (k in com.inamibrahim.kinhold.model.LinkKind.entries) {
+                    DialogButton(k.label, { onPick(k) }, Modifier.fillMaxWidth(), kind = if (k == current) ButtonKind.Primary else ButtonKind.Tonal)
+                }
+                Text("Only birth and adoptive parents count as ancestors in How are we related.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+            }
+        },
+        confirmButton = { DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral) },
+    )
 }

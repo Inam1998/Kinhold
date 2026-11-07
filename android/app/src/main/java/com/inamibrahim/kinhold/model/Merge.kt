@@ -47,6 +47,8 @@ class MergeResult(
     /** Incoming ids of people who are not in your tree and will be added. */
     val newPeople: List<Int>,
     val links: List<Pair<Int, Int>>,
+    /** The kind of each new link that is not a birth link, by the same (child, parent) references as [links]. */
+    val linkKinds: Map<Pair<Int, Int>, LinkKind>,
     val partnerships: List<Pair<Int, Int>>,
     val personEvents: Map<Int, List<Event>>,
     val personSources: Map<Int, List<Source>>,
@@ -281,18 +283,20 @@ class Merge(
         // Parent links: at most two different parents per child, as the tree can only show two.
         val parentsNow = HashMap<Int, MutableSet<Int>>()
         val links = ArrayList<Pair<Int, Int>>()
+        val linkKinds = HashMap<Pair<Int, Int>, LinkKind>()
         var skipped = 0
         for ((c, p) in incoming.parentLinks) {
             val rc = ref(c)
             val rp = ref(p)
             val set = parentsNow.getOrPut(rc) { if (rc > 0) current.parentsOf(rc).map { it.id }.toMutableSet() else mutableSetOf() }
             if (rp in set) continue
-            if (set.size >= 2) {
+            if (set.size >= Family.MAX_PARENTS) {
                 skipped++
                 continue
             }
             set += rp
             links += rc to rp
+            incoming.linkKinds[c to p]?.let { linkKinds[rc to rp] = it }
         }
         val partnerships = LinkedHashSet<Pair<Int, Int>>()
         for ((a, b) in incoming.partnerships) {
@@ -330,7 +334,7 @@ class Merge(
             val fresh = events.filter { e -> mine.none { eventKey(it) == eventKey(e) } }
             if (fresh.isNotEmpty()) coupleEvents[key] = fresh
         }
-        return MergeResult(matches, updates, photoFills, newPeople, links, partnerships.toList(), personEvents, personSources, personFields, coupleEvents, skipped)
+        return MergeResult(matches, updates, photoFills, newPeople, links, linkKinds, partnerships.toList(), personEvents, personSources, personFields, coupleEvents, skipped)
     }
 
     private fun eventKey(e: Event) = listOf(e.kind.key, e.detail.trim().lowercase(), e.date.text(), e.place.trim().lowercase())

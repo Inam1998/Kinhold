@@ -11,6 +11,7 @@ class Family private constructor(
     private val childIds: Map<Int, List<Int>>,
     private val spouseIds: Map<Int, List<Int>>,
     private val couples: Map<Pair<Int, Int>, CoupleInfo>,
+    private val linkKinds: Map<Pair<Int, Int>, LinkKind>,
 ) {
     val size: Int get() = byId.size
     val people: Collection<Person> get() = byId.values
@@ -25,6 +26,15 @@ class Family private constructor(
         spouseIds.flatMap { (a, others) -> others.filter { a < it }.map { a to it } }
 
     fun person(id: Int): Person = byId.getValue(id)
+
+    /** How [child] is linked to [parent]: a birth link unless another kind was recorded. */
+    fun kindOf(child: Int, parent: Int): LinkKind = linkKinds[child to parent] ?: LinkKind.Birth
+
+    /** The links that are not birth links, for saving: (child, parent) to kind. */
+    fun linkKinds(): Map<Pair<Int, Int>, LinkKind> = linkKinds
+
+    /** Parents who count as ancestors: birth and adoptive parents, not foster or step. */
+    fun lineageParentsOf(id: Int): List<Person> = parentsOf(id).filter { kindOf(id, it.id).isLineage }
 
     /** Father first, then mother, then anyone whose sex is not recorded. */
     fun parentsOf(id: Int): List<Person> = parentIds[id].orEmpty().map(byId::getValue).sortedBy { it.sex.ordinal }
@@ -83,6 +93,9 @@ class Family private constructor(
     }
 
     companion object {
+        /** The most parents one person can have recorded: birth, adoptive, foster and step parents together. */
+        const val MAX_PARENTS = 4
+
         val Empty = of(emptyList(), emptyList(), emptyList())
 
         /**
@@ -94,6 +107,7 @@ class Family private constructor(
             parentLinks: List<Pair<Int, Int>>,
             partnerships: List<Pair<Int, Int>>,
             couples: Map<Pair<Int, Int>, CoupleInfo> = emptyMap(),
+            linkKinds: Map<Pair<Int, Int>, LinkKind> = emptyMap(),
         ): Family {
             val byId = LinkedHashMap<Int, Person>()
             for (p in people) byId[p.id] = p
@@ -110,7 +124,7 @@ class Family private constructor(
                 spouses.getOrPut(a) { mutableListOf() } += b
                 spouses.getOrPut(b) { mutableListOf() } += a
             }
-            return Family(byId, parents, children, spouses, couples)
+            return Family(byId, parents, children, spouses, couples, linkKinds.filterKeys { it.first in byId && it.second in byId && it.second in parents[it.first].orEmpty() })
         }
     }
 }

@@ -17,6 +17,8 @@ class BackupData(
     val details: TreeDetails = TreeDetails.Empty,
     /** Extra photos by person id, each a JPEG. */
     val gallery: Map<Int, List<ByteArray>> = emptyMap(),
+    /** Parent links that are not birth links, as (child, parent) to kind. */
+    val linkKinds: Map<Pair<Int, Int>, LinkKind> = emptyMap(),
 )
 
 /** A backup file that cannot be used. [message] is written for the person, not for a programmer. */
@@ -30,7 +32,7 @@ class BackupException(message: String) : Exception(message)
  */
 object BackupCodec {
     const val FORMAT = "kinhold-backup"
-    const val VERSION = 7
+    const val VERSION = 8
     private const val MAX_PEOPLE = 200_000
     private const val MAX_PHOTO_BYTES = 3_000_000
     private const val NOT_A_BACKUP = "This file is not a Kinhold backup."
@@ -78,7 +80,7 @@ object BackupCodec {
             .put("version", VERSION)
             .put("created", created)
             .put("people", people)
-            .put("parentLinks", pairs(family.parentLinks()))
+            .put("parentLinks", JSONArray().apply { for ((c, p) in family.parentLinks()) put(JSONArray().put(c).put(p).also { a -> family.kindOf(c, p).takeIf { it != LinkKind.Birth }?.let { k -> a.put(k.ordinal) } }) })
             .put("partnerships", pairs(family.partnerships()))
             .put(
                 "coupleEvents",
@@ -169,6 +171,17 @@ object BackupCodec {
                 )
             }
             val links = readPairs(root.optJSONArray("parentLinks"), ids).distinct()
+            val kinds = HashMap<Pair<Int, Int>, LinkKind>()
+            root.optJSONArray("parentLinks")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val e = arr.getJSONArray(i)
+                    if (e.length() > 2) {
+                        val k = e.getInt(2)
+                        if (k !in 0 until LinkKind.entries.size) throw BackupException(DAMAGED)
+                        if (k != 0) kinds[e.getInt(0) to e.getInt(1)] = LinkKind.fromOrdinal(k)
+                    }
+                }
+            }
             val partnerships = readPairs(root.optJSONArray("partnerships"), ids)
                 .map { (a, b) -> minOf(a, b) to maxOf(a, b) }
                 .distinct()
@@ -186,7 +199,7 @@ object BackupCodec {
             }
             return BackupData(
                 people, links, partnerships, root.optString("created", ""), photos,
-                TreeDetails(personEvents, personSources, coupleEvents, personFields), gallery,
+                TreeDetails(personEvents, personSources, coupleEvents, personFields), gallery, kinds,
             )
         } catch (e: JSONException) {
             throw BackupException(DAMAGED)

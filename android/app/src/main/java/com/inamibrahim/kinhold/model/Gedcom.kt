@@ -275,11 +275,16 @@ object Gedcom {
                 }
             }
         }
+        val kinds = HashMap<Pair<Int, Int>, LinkKind>()
         // Some programs list a child under FAMC without the family listing them back; trust either.
         for (node in people) {
             val childId = ids[node.xref] ?: continue
             for (famc in node.all("FAMC")) {
-                for (parent in parentsOfFamily[famc.value.trim()].orEmpty()) if (parent != childId) links += childId to parent
+                val kind = famc.child("PEDI")?.value?.let { LinkKind.fromGedcom(it) }
+                for (parent in parentsOfFamily[famc.value.trim()].orEmpty()) if (parent != childId) {
+                    links += childId to parent
+                    if (kind != null) kinds[childId to parent] = kind
+                }
             }
         }
 
@@ -287,7 +292,7 @@ object Gedcom {
             persons.size, families.size, reduced, eventsDropped, sourcesDropped, media, other, skipped, eventsKept, sourcesKept,
         )
         val details = TreeDetails(personEvents, personSources, coupleEvents, personFields)
-        return GedcomResult(BackupData(persons, links.toList(), partnerships.toList(), details = details), report)
+        return GedcomResult(BackupData(persons, links.toList(), partnerships.toList(), details = details, linkKinds = kinds), report)
     }
 
     private val MONTH_PATTERN = PartialDate.MONTH_TAGS.joinToString("|")
@@ -483,6 +488,7 @@ object Gedcom {
         val familyIds = HashMap<List<Int>, Int>()
         families.keys.forEachIndexed { i, key -> familyIds[key] = i + 1 }
 
+        val familyKeys = familyIds.entries.associate { it.value to it.key }
         val spouseIn = HashMap<Int, MutableList<Int>>()
         val childIn = HashMap<Int, MutableList<Int>>()
         for ((key, children) in families) {
@@ -573,7 +579,12 @@ object Gedcom {
             if (p.notes.isNotBlank()) text(1, "NOTE", p.notes.trim())
             for (e in details.events[p.id].orEmpty()) event(1, e)
             for (s in details.sources[p.id].orEmpty()) citation(1, s)
-            for (f in childIn[p.id].orEmpty()) put(1, "FAMC", "@F$f@")
+            for (f in childIn[p.id].orEmpty()) {
+                put(1, "FAMC", "@F$f@")
+                // How the child is linked to this family's parents, when every one of those links is the same and not a birth link.
+                val kinds = familyKeys.getValue(f).map { family.kindOf(p.id, it) }.distinct()
+                if (kinds.size == 1 && kinds[0] != LinkKind.Birth) put(2, "PEDI", kinds[0].gedcom)
+            }
             for (f in spouseIn[p.id].orEmpty()) put(1, "FAMS", "@F$f@")
         }
 

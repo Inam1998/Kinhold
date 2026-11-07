@@ -234,3 +234,18 @@ data class CustomField(val label: String = "", val value: String = "") {
 
     fun clamped() = CustomField(label.trim().take(Limits.FIELD_LABEL), value.trim().take(Limits.FIELD_VALUE))
 }
+
+/** How a child is linked to a parent. Only birth and adoptive parents count as ancestors in the relationship finder. */
+enum class LinkKind(val label: String, val gedcom: String) {
+    Birth("Birth parent", "birth"),
+    Adopted("Adoptive parent", "adopted"),
+    Foster("Foster parent", "foster"),
+    Step("Step-parent", "step");
+
+    val isLineage: Boolean get() = this == Birth || this == Adopted
+
+    companion object {
+        fun fromOrdinal(n: Int): LinkKind = entries.getOrElse(n) { Birth }
+        fun fromGedcom(text: String): LinkKind? = entries.firstOrNull { it.gedcom.equals(text.trim(), ignoreCase = true) && it != Birth }
+    }
+}

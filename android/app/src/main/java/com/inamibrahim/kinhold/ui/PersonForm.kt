@@ -67,7 +67,9 @@ import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Event
+import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.GeoPin
+import com.inamibrahim.kinhold.model.LinkKind
 import com.inamibrahim.kinhold.model.Limits
 import com.inamibrahim.kinhold.model.EventJson
 import com.inamibrahim.kinhold.model.EventKind
@@ -84,7 +86,8 @@ fun PersonFormScreen(
     onPreparePhoto: (Uri, (Result<PreparedPhoto>) -> Unit) -> Unit,
     initialDetails: PersonDetails,
     spouses: List<Pair<Int, String>>,
-    onSave: (PersonDraft, PhotoChange, PersonDetails) -> Unit,
+    linkChoice: Boolean,
+    onSave: (PersonDraft, PhotoChange, PersonDetails, LinkKind) -> Unit,
     onDelete: (() -> Unit)?,
     onCancel: () -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
@@ -149,6 +152,8 @@ fun PersonFormScreen(
     var deathPlace by rememberSaveable { mutableStateOf(initial.deathPlace) }
     var notes by rememberSaveable { mutableStateOf(initial.notes) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var linkKindName by rememberSaveable { mutableStateOf(LinkKind.Birth.name) }
+    val linkKind = LinkKind.valueOf(linkKindName)
     // Picking a pin in Google Maps: when the person comes back, a location they copied there is offered.
     var waitingForMaps by rememberSaveable { mutableStateOf(false) }
     var offered by remember { mutableStateOf<GeoPin?>(null) }
@@ -267,6 +272,14 @@ fun PersonFormScreen(
                         }
                     }
 
+                    if (linkChoice) {
+                        FormCard("How are they linked?", Icons.Filled.Favorite, Tones.Rose) {
+                            Text("Birth is the usual choice. Adoptive, foster and step parents and children are also kept, and a person can have up to ${Family.MAX_PARENTS} parents.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (k in LinkKind.entries) Pill(k.label.replace(" parent", ""), linkKind == k, { linkKindName = k.name })
+                            }
+                        }
+                    }
                     FormCard("Life", Icons.Filled.DateRange, Tones.Amber) {
                         DateFields("Born", bornDay, bornMonth, born, { d, m, y -> bornDay = d; bornMonth = m; born = y })
                         Field("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth())
@@ -345,7 +358,7 @@ fun PersonFormScreen(
                     if (problem != null) {
                         Text(problem, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
                     }
-                    PrimaryButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank })) }, Modifier.fillMaxWidth(), enabled = problem == null && !preparing)
+                    PrimaryButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) }, Modifier.fillMaxWidth(), enabled = problem == null && !preparing)
                     DialogButton("Cancel", onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
                     if (onDelete != null) {
                         DialogButton("Delete this person", { confirmDelete = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger, icon = Icons.Filled.Delete)

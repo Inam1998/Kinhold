@@ -53,6 +53,7 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             CREATE TABLE parent_link (
                 child_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
                 parent_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+                kind INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (child_id, parent_id)
             )
             """.trimIndent(),
@@ -183,10 +184,11 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             createFieldTable(db)
         }
         if (oldVersion < 7) createGalleryTable(db)
+        if (oldVersion < 8) db.execSQL("ALTER TABLE parent_link ADD COLUMN kind INTEGER NOT NULL DEFAULT 0")
     }
 
     companion object {
-        const val VERSION = 7
+        const val VERSION = 8
         const val FILE_NAME = "kinhold.db"
     }
 }

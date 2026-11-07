@@ -87,8 +87,8 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun add(draft: PersonDraft, relation: Relation?, photo: PreparedPhoto?, details: PersonDetails, onAdded: (Int) -> Unit) {
-        viewModelScope.launch { onAdded(repo.addPerson(draft, relation, photo, details)) }
+    fun add(draft: PersonDraft, relation: Relation?, photo: PreparedPhoto?, details: PersonDetails, linkKind: com.inamibrahim.kinhold.model.LinkKind = com.inamibrahim.kinhold.model.LinkKind.Birth, onAdded: (Int) -> Unit) {
+        viewModelScope.launch { onAdded(repo.addPerson(draft, relation, photo, details, linkKind)) }
     }
 
     fun update(id: Int, draft: PersonDraft, photo: PhotoChange, details: PersonDetails, onDone: () -> Unit) {
@@ -120,6 +120,10 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
             }
             onDone(result)
         }
+    }
+
+    fun setLinkKind(child: Int, parent: Int, kind: com.inamibrahim.kinhold.model.LinkKind) {
+        viewModelScope.launch { repo.setLinkKind(child, parent, kind) }
     }
 
     fun removeGalleryPhoto(id: Long, onDone: () -> Unit) {

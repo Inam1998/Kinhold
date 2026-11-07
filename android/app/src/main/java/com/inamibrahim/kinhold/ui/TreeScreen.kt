@@ -270,7 +270,7 @@ private fun FocusCard(
                 ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky)
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
                 // A person has at most two parents, but can have any number of spouses.
-                if (parents < 2) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet)
+                if (parents < Family.MAX_PARENTS) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet)
                 ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose)
                 ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint)
             }
