@@ -26,7 +26,15 @@ Revenue depends on active users and the rate advertisers pay; measure with real 
 ## Architecture notes
 - Native Kotlin and Jetpack Compose, minSdk 26, targetSdk 36. The tree is drawn on a single Canvas: only boxes on screen are drawn, detail drops at low zoom, text is measured once in tree units and drawn on the scaled canvas so zooming never re-measures.
 - Layout (`tree/TreeLayout.kt`) is pure Kotlin with no Android dependencies, so it is unit tested. Edges are stored in one flat float array.
-- Storage is not built yet. Plan: a local database with atomic writes, a full-file backup, and GEDCOM as the exchange format.
+- Storage (built): SQLite, one transaction per change, an immutable `Family` snapshot published to the UI; photos in their own table (database version 2, with a tested upgrade step); a one-file backup (JSON, format version 2, photos as Base64, version 1 files still read) with a safety copy written before every restore or import; GEDCOM 5.5.1 export and a forgiving 5.5 / 5.5.1 / 7.0 reader.
+- Relatives that are not drawn (siblings, half-siblings, step relatives) are worked out from the stored parent and spouse links (`model/Relatives.kt`), not stored.
+- Phone-only choices (theme, accent) live in a preferences file, outside the tree and its backups.
+- Events and sources (0.1.0): birth and death keep their year fields (`born`, `died`), and the optional month and day sit beside them (`birth_month`, `birth_day`, `death_month`, `death_day`); every other event is a row in an `event` table that belongs to one person or to one couple (a marriage, divorce, engagement, annulment). A `source` row is a plain-text citation for one event or for a person in general. The tree snapshot (`Family`) holds only a small `CoupleInfo` per couple (earliest marriage date, ended or not); events themselves are read from the database for one person at a time, so memory and main-thread work do not grow with the number of events.
+
+## Progress (2026-11-07, version 0.1.0)
+Built: focus-person tree view with several spouses, local storage with add/edit/delete, backup, restore and undo, GEDCOM import and export, in-app Help guide, photos with default avatars, new look, settings (theme and accent), siblings and step relatives, events (with full dates, marriages and divorces) and plain-text sources. Details and limits are in `CLAUDE.md`.
+Events and sources are built (0.1.0, see `CLAUDE.md`). Source scans or documents still come later because they make backups much larger; an "about/between" date type, event places on a map, and events shown on the tree cards are not built.
+After that: recorded adopted/foster/step link types and more than two parents; ads and Pro; scan-to-person; voice stories; contact import.
 
 ## Risks
 - The tree view with large, tangled real families (multiple marriages, cousins who marry) is the hardest engineering part.

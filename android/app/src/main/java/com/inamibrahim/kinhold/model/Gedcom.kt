@@ -10,17 +10,20 @@ class GedcomException(message: String) : Exception(message)
 
 /**
  * What reading a GEDCOM file found and what it could not keep, so the person can be told before anything is changed.
- * Kinhold keeps names, sex, birth and death years and places, notes and the family links; everything else is counted.
+ * Kinhold keeps names, sex, birth and death dates and places, notes, events, source citations and the family links;
+ * everything else is counted.
  */
 class GedcomReport(
     val individuals: Int,
     val families: Int,
-    val datesReducedToYear: Int,
+    val datesSimplified: Int,
     val ignoredEvents: Int,
     val ignoredSources: Int,
     val ignoredMedia: Int,
     val ignoredOther: Int,
     val skippedLinks: Int,
+    val eventsKept: Int = 0,
+    val sourcesKept: Int = 0,
 ) {
     /** Plain sentences for the confirmation, given how many people the tree on this phone already has. */
     fun summary(currentPeople: Int): List<String> {
@@ -31,20 +34,23 @@ class GedcomReport(
             lines += "Your tree has ${people(currentPeople)}. Replacing it keeps a copy you can undo. " +
                 "Adding keeps everyone already there, and anyone in both will appear twice."
         }
-        if (datesReducedToYear > 0) {
-            lines += "$datesReducedToYear ${if (datesReducedToYear == 1) "date has" else "dates have"} more than a year " +
-                "(a day, a month or \"about\"). Only the year is kept."
+        if (datesSimplified > 0) {
+            lines += "$datesSimplified ${if (datesSimplified == 1) "date is" else "dates are"} given as \"about\", a range or a phrase. " +
+                "Only the first date in each is kept."
         }
         fun count(n: Int, one: String, many: String) = "$n ${if (n == 1) one else many}"
+        if (eventsKept > 0 || sourcesKept > 0) {
+            lines += "It also holds ${count(eventsKept, "event", "events")} and ${count(sourcesKept, "source citation", "source citations")}, which are kept."
+        }
         val dropped = ArrayList<String>()
-        if (ignoredEvents > 0) dropped += count(ignoredEvents, "event", "events") + " such as marriages, jobs and residences"
+        if (ignoredEvents > 0) dropped += count(ignoredEvents, "event", "events") + " of kinds Kinhold has no place for"
         if (ignoredSources > 0) dropped += count(ignoredSources, "source citation", "source citations")
         if (ignoredMedia > 0) dropped += count(ignoredMedia, "photo or file", "photos or files")
         if (ignoredOther > 0) dropped += count(ignoredOther, "other detail", "other details")
         if (dropped.isNotEmpty()) lines += "Not kept: ${dropped.joinToString(", ")}."
         if (skippedLinks == 1) lines += "1 link to a person missing from the file was skipped."
         if (skippedLinks > 1) lines += "$skippedLinks links to people missing from the file were skipped."
-        if (datesReducedToYear == 0 && dropped.isEmpty() && skippedLinks == 0) lines += "Everything in the file can be kept."
+        if (datesSimplified == 0 && dropped.isEmpty() && skippedLinks == 0) lines += "Everything in the file can be kept."
         return lines
     }
 }
@@ -72,21 +78,94 @@ object Gedcom {
         if (people.size > MAX_PEOPLE) throw GedcomException("This GEDCOM file has too many people to open.")
 
         val notes = roots.filter { (it.tag == "NOTE" || it.tag == "SNOTE") && it.xref != null }.associate { it.xref!! to it.value }
+        val sourceRecords = roots.filter { it.tag == "SOUR" && it.xref != null }.associateBy { it.xref!! }
         val ids = HashMap<String, Int>()
         val persons = ArrayList<Person>(people.size)
+        val personEvents = LinkedHashMap<Int, List<Event>>()
+        val personSources = LinkedHashMap<Int, List<Source>>()
+        val coupleEvents = LinkedHashMap<Pair<Int, Int>, MutableList<Event>>()
         var reduced = 0
-        var events = 0
-        var sources = 0
+        var eventsDropped = 0
+        var eventsKept = 0
+        var sourcesDropped = 0
+        var sourcesKept = 0
         var media = 0
         var other = 0
 
-        fun yearOf(date: String?): Int? {
-            if (date.isNullOrBlank()) return null
-            val text = date.trim()
-            if (BC.containsMatchIn(text)) return null
-            val year = YEAR.find(text)?.groupValues?.get(1)?.toInt()?.takeIf { it in 1..9999 } ?: return null
-            if (text != year.toString()) reduced++
-            return year
+        fun dateOf(node: Node?): PartialDate {
+            val parsed = parseDate(node?.child("DATE")?.value) ?: return PartialDate.None
+            if (parsed.second) reduced++
+            return parsed.first
+        }
+
+        fun notesOf(node: Node): List<String> = node.all("NOTE").mapNotNull { n ->
+            val v = n.value
+            (if (REFERENCE.matches(v)) notes[v] else v)?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+        /** A citation: either an inline text or a pointer to a source record that has the title, author and so on. */
+        fun sourceOf(cit: Node): Source? {
+            val v = cit.value.trim()
+            val pointer = REFERENCE.matches(v)
+            val record = if (pointer) sourceRecords[v] else null
+            if (pointer && record == null) return null
+            val title = if (record != null) record.child("TITL")?.value ?: record.child("ABBR")?.value ?: "" else v
+            val extra = ArrayList<String>()
+            extra += notesOf(cit)
+            cit.child("DATA")?.all("TEXT")?.forEach { extra += it.value }
+            if (record != null) {
+                record.child("AUTH")?.value?.let { extra += "Author: $it" }
+                record.child("PUBL")?.value?.let { extra += "Published: $it" }
+                record.child("TEXT")?.value?.let { extra += it }
+                extra += notesOf(record)
+            }
+            val source = Source(title, cit.child("PAGE")?.value.orEmpty(), extra.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")).clamped()
+            return source.takeIf { !it.isBlank }
+        }
+
+        /** The citations under [parent]; [prefix] is put in front of each note. */
+        fun sourcesOf(parent: Node, prefix: String = ""): List<Source> = parent.all("SOUR").mapNotNull { cit ->
+            val s = sourceOf(cit)
+            if (s == null) sourcesDropped++
+            s?.let { if (prefix.isEmpty()) it else it.copy(note = (prefix + it.note).trim()) }
+        }
+
+        /** An event line (BURI, OCCU, EVEN and so on) as an [Event], or null if it holds nothing Kinhold can keep. */
+        fun eventOf(node: Node): Event? {
+            val value = node.value.trim().takeIf { !it.equals("Y", ignoreCase = true) }.orEmpty()
+            val type = node.child("TYPE")?.value?.trim().orEmpty()
+            val kind: EventKind
+            val detail: String
+            var extraNote = ""
+            when {
+                node.tag == "EVEN" || node.tag == "FACT" -> {
+                    val byLabel = EventKind.fromLabel(type)
+                    if (byLabel != null) {
+                        kind = byLabel
+                        detail = value
+                    } else if (type.isNotEmpty()) {
+                        kind = EventKind.Custom
+                        detail = type
+                        extraNote = value
+                    } else {
+                        kind = EventKind.Custom
+                        detail = value
+                    }
+                }
+                node.tag in GENERAL_EVENT_LABELS -> {
+                    kind = EventKind.Custom
+                    detail = GENERAL_EVENT_LABELS.getValue(node.tag)
+                    extraNote = listOf(value, type).filter { it.isNotEmpty() }.joinToString(". ")
+                }
+                else -> {
+                    kind = EventKind.fromTag(node.tag) ?: return null
+                    detail = value.ifEmpty { type }
+                }
+            }
+            val place = node.child("PLAC")?.value?.trim().orEmpty()
+                .ifEmpty { node.child("ADDR")?.let { a -> a.value.lines().joinToString(", ") { it.trim() }.trim() }.orEmpty() }
+            val note = (listOf(extraNote) + notesOf(node)).filter { it.isNotEmpty() }.joinToString("\n\n")
+            return Event(kind, detail, dateOf(node), place, note, sourcesOf(node)).clamped()
         }
 
         for (node in people) {
@@ -96,10 +175,9 @@ object Gedcom {
             val (given, surname) = nameOf(node.child("NAME"))
             val birth = node.child("BIRT")
             val death = node.child("DEAT")
-            val noteText = node.all("NOTE").mapNotNull { n ->
-                val v = n.value
-                (if (REFERENCE.matches(v)) notes[v] else v)?.trim()?.takeIf { it.isNotEmpty() }
-            }.joinToString("\n\n")
+            val birthDate = dateOf(birth)
+            val deathDate = dateOf(death)
+            val noteText = notesOf(node).joinToString("\n\n")
             persons += Person(
                 id = id,
                 given = given,
@@ -109,21 +187,38 @@ object Gedcom {
                     "F" -> Sex.Female
                     else -> Sex.Unknown
                 },
-                born = yearOf(birth?.child("DATE")?.value),
-                died = yearOf(death?.child("DATE")?.value),
+                born = birthDate.year,
+                died = deathDate.year,
                 birthPlace = birth?.child("PLAC")?.value?.trim().orEmpty(),
                 deathPlace = death?.child("PLAC")?.value?.trim().orEmpty(),
                 notes = noteText,
+                birthMonth = birthDate.month,
+                birthDay = birthDate.day,
+                deathMonth = deathDate.month,
+                deathDay = deathDate.day,
             )
+            val events = ArrayList<Event>()
             for (detail in node.children) {
-                when (detail.tag) {
-                    in KEPT_PERSON_TAGS -> Unit
-                    in EVENT_TAGS -> events++
-                    "SOUR" -> sources++
-                    "OBJE" -> media++
+                when {
+                    detail.tag in KEPT_PERSON_TAGS || detail.tag == "SOUR" -> Unit
+                    detail.tag == "OBJE" -> media++
+                    detail.tag in UNSUPPORTED_EVENT_TAGS -> eventsDropped++
+                    detail.tag in EVENT_TAGS -> {
+                        val e = eventOf(detail)
+                        if (e != null && events.size < Limits.EVENTS) events += e else eventsDropped++
+                    }
                     else -> if (!detail.tag.startsWith("_") && detail.tag !in HOUSEKEEPING_TAGS) other++
                 }
             }
+            if (events.isNotEmpty()) personEvents[id] = events
+            eventsKept += events.size
+            // Citations for the person in general, and for the birth and the death (which are fields, not events).
+            val cited = sourcesOf(node) + (birth?.let { sourcesOf(it, "About the birth. ") } ?: emptyList()) +
+                (death?.let { sourcesOf(it, "About the death. ") } ?: emptyList())
+            if (cited.size > Limits.SOURCES) sourcesDropped += cited.size - Limits.SOURCES
+            val keptSources = cited.take(Limits.SOURCES)
+            if (keptSources.isNotEmpty()) personSources[id] = keptSources
+            sourcesKept += keptSources.size + events.sumOf { it.sources.size }
         }
 
         val links = LinkedHashSet<Pair<Int, Int>>()
@@ -142,17 +237,29 @@ object Gedcom {
         for (fam in families) {
             val parents = listOfNotNull(lookup(fam.child("HUSB")?.value), lookup(fam.child("WIFE")?.value)).distinct()
             parentsOfFamily[fam.xref!!] = parents
-            if (parents.size == 2) partnerships += minOf(parents[0], parents[1]) to maxOf(parents[0], parents[1])
+            val coupleKey = if (parents.size == 2) minOf(parents[0], parents[1]) to maxOf(parents[0], parents[1]) else null
+            if (coupleKey != null) partnerships += coupleKey
             for (child in fam.all("CHIL")) {
                 val childId = lookup(child.value) ?: continue
                 for (parent in parents) if (parent != childId) links += childId to parent
             }
             for (detail in fam.children) {
-                when (detail.tag) {
-                    in KEPT_FAMILY_TAGS -> Unit
-                    in EVENT_TAGS -> events++
-                    "SOUR" -> sources++
-                    "OBJE" -> media++
+                when {
+                    detail.tag in KEPT_FAMILY_TAGS -> Unit
+                    detail.tag == "SOUR" -> sourcesDropped++
+                    detail.tag == "OBJE" -> media++
+                    detail.tag in UNSUPPORTED_EVENT_TAGS -> eventsDropped++
+                    detail.tag in EVENT_TAGS -> {
+                        val e = eventOf(detail)
+                        val list = if (coupleKey != null) coupleEvents.getOrPut(coupleKey) { mutableListOf() } else null
+                        if (e != null && list != null && list.size < Limits.EVENTS) {
+                            list += e
+                            eventsKept++
+                            sourcesKept += e.sources.size
+                        } else {
+                            eventsDropped++
+                        }
+                    }
                     else -> if (!detail.tag.startsWith("_") && detail.tag !in HOUSEKEEPING_TAGS) other++
                 }
             }
@@ -165,11 +272,43 @@ object Gedcom {
             }
         }
 
-        val report = GedcomReport(persons.size, families.size, reduced, events, sources, media, other, skipped)
-        return GedcomResult(BackupData(persons, links.toList(), partnerships.toList()), report)
+        val report = GedcomReport(
+            persons.size, families.size, reduced, eventsDropped, sourcesDropped, media, other, skipped, eventsKept, sourcesKept,
+        )
+        val details = TreeDetails(personEvents, personSources, coupleEvents)
+        return GedcomResult(BackupData(persons, links.toList(), partnerships.toList(), details = details), report)
     }
 
-    private val YEAR = Regex("""(?<![0-9])([0-9]{3,4})(?![0-9])""")
+    private val MONTH_PATTERN = PartialDate.MONTH_TAGS.joinToString("|")
+    private val EXACT_DATE = Regex("""^(?:(\d{1,2})\s+)?(?:($MONTH_PATTERN)[A-Z]*\.?\s+)?(\d{3,4})(?:/\d{1,4})?$""", RegexOption.IGNORE_CASE)
+    private val LOOSE_DATE = Regex("""(?<![0-9])(?:(\d{1,2})\s+)?(?:($MONTH_PATTERN)[A-Z]*\.?\s+)?(\d{3,4})(?![0-9])""", RegexOption.IGNORE_CASE)
+
+    /**
+     * A GEDCOM date as a [PartialDate], and whether something was lost on the way: "12 MAR 1850", "MAR 1850" and "1850"
+     * are kept whole; "ABT 1850", "BET 1800 AND 1810" and phrases keep their first date and count as simplified. BC dates
+     * and text with no year give null.
+     */
+    internal fun parseDate(raw: String?): Pair<PartialDate, Boolean>? {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty() || BC.containsMatchIn(text)) return null
+        val exact = EXACT_DATE.matchEntire(text)
+        val m = exact ?: LOOSE_DATE.find(text) ?: return null
+        val year = m.groupValues[3].toInt().takeIf { it in 1..9999 } ?: return null
+        var simplified = exact == null
+        var day = m.groupValues[1].toIntOrNull()
+        val month = m.groupValues[2].takeIf { it.isNotEmpty() }?.let { PartialDate.MONTH_TAGS.indexOf(it.take(3).uppercase()) + 1 }
+        if (day != null && month == null) {
+            day = null
+            simplified = true
+        }
+        var date = PartialDate(year, month, day)
+        if (!date.isValid) {
+            date = PartialDate(year, month, null)
+            simplified = true
+        }
+        return date to simplified
+    }
+
     private val BC = Regex("""\bB\.?\s?C\.?(?:E\.?)?\b""", RegexOption.IGNORE_CASE)
     private val REFERENCE = Regex("""@[^@\s]+@""")
     private val LINE = Regex("""^(\d+)\s+(?:(@[^@\s]+@)\s+)?([A-Za-z0-9_]+)(?:\s(.*))?$""")
@@ -177,11 +316,19 @@ object Gedcom {
     private val KEPT_PERSON_TAGS = setOf("NAME", "SEX", "BIRT", "DEAT", "NOTE", "SNOTE", "FAMC", "FAMS")
     private val KEPT_FAMILY_TAGS = setOf("HUSB", "WIFE", "CHIL", "NOTE", "SNOTE")
     private val HOUSEKEEPING_TAGS = setOf("CHAN", "RIN", "REFN", "RFN", "AFN", "UID", "SUBM", "ALIA", "ASSO", "ANCI", "DESI", "SOURCE", "TYPE", "RESN", "CREA", "NO")
-    private val EVENT_TAGS = setOf(
-        "MARR", "DIV", "DIVF", "ANUL", "ENGA", "MARB", "MARC", "MARL", "MARS", "CENS", "BURI", "CREM", "CHR", "CHRA", "BAPM",
-        "BARM", "BASM", "BLES", "CONF", "FCOM", "ORDN", "NATU", "EMIG", "IMMI", "PROB", "WILL", "GRAD", "RETI", "EVEN",
-        "OCCU", "RESI", "TITL", "EDUC", "PROP", "RELI", "DSCR", "CAST", "NATI", "NCHI", "NMR", "SSN", "IDNO", "FACT",
-        "ADOP", "BAPL", "CONL", "ENDL", "SLGC", "SLGS", "ADDR", "PHON", "EMAIL", "WWW", "FAX",
+    /** General events that have a tag of their own but no kind in Kinhold; they are kept as events named by the label. */
+    private val GENERAL_EVENT_LABELS = mapOf(
+        "BARM" to "Bar Mitzvah", "BASM" to "Bat Mitzvah", "BLES" to "Blessing", "FCOM" to "First communion", "ORDN" to "Ordination",
+    )
+
+    /** Event lines that become an [Event]. */
+    private val EVENT_TAGS: Set<String> =
+        EventKind.entries.mapNotNull { it.tag }.toSet() + GENERAL_EVENT_LABELS.keys + setOf("EVEN", "FACT")
+
+    /** Event and fact lines with no place in Kinhold: ordinances, identity numbers, contact details and the like. */
+    private val UNSUPPORTED_EVENT_TAGS = setOf(
+        "DIVF", "MARB", "MARC", "MARL", "MARS", "CHRA", "DSCR", "CAST", "NCHI", "NMR", "SSN", "IDNO",
+        "BAPL", "CONL", "ENDL", "SLGC", "SLGS", "ADDR", "PHON", "EMAIL", "WWW", "FAX",
     )
 
     /** One line of a GEDCOM file with the lines indented under it. */
@@ -278,7 +425,7 @@ object Gedcom {
      * The whole tree as GEDCOM 5.5.1 text (UTF-8, lines ended with CR LF). Each couple, and each group of children
      * with the same parents, becomes one family record, so couples with no children and single parents are kept.
      */
-    fun write(family: Family, appVersion: String, exportedOn: String): String {
+    fun write(family: Family, details: TreeDetails, appVersion: String, exportedOn: String): String {
         val out = StringBuilder()
 
         fun put(level: Int, tag: String, value: String = "", xref: String? = null) {
@@ -325,6 +472,41 @@ object Gedcom {
             for (child in children) childIn.getOrPut(child) { mutableListOf() } += number
         }
 
+        // Each distinct source title is written once as a record, and every citation points at it.
+        val sourceNumbers = LinkedHashMap<String, Int>()
+
+        fun citation(level: Int, s: Source) {
+            val number = sourceNumbers.getOrPut(s.title) { sourceNumbers.size + 1 }
+            put(level, "SOUR", "@S$number@")
+            if (s.citation.isNotBlank()) text(level + 1, "PAGE", s.citation)
+            if (s.note.isNotBlank()) text(level + 1, "NOTE", s.note)
+        }
+
+        /** An event as its own tag where one exists, otherwise as a general event typed with its name. */
+        fun event(level: Int, e: Event) {
+            val tag = e.kind.tag
+            val valueTags = setOf("OCCU", "EDUC", "RELI", "TITL", "NATI", "PROP")
+            when {
+                tag != null && tag in valueTags -> put(level, tag, e.detail.replace("@", "@@"))
+                tag != null -> {
+                    put(level, tag)
+                    if (e.detail.isNotBlank()) text(level + 1, "TYPE", e.detail)
+                }
+                e.kind == EventKind.Custom -> {
+                    put(level, "EVEN")
+                    if (e.detail.isNotBlank()) text(level + 1, "TYPE", e.detail)
+                }
+                else -> {
+                    put(level, "EVEN", e.detail.replace("@", "@@"))
+                    put(level + 1, "TYPE", e.kind.label)
+                }
+            }
+            if (!e.date.isEmpty) put(level + 1, "DATE", e.date.gedcom())
+            if (e.place.isNotBlank()) text(level + 1, "PLAC", e.place)
+            if (e.note.isNotBlank()) text(level + 1, "NOTE", e.note)
+            for (s in e.sources) citation(level + 1, s)
+        }
+
         put(0, "HEAD")
         put(1, "SOUR", "Kinhold")
         put(2, "NAME", "Kinhold")
@@ -352,15 +534,17 @@ object Gedcom {
             }
             if (p.born != null || p.birthPlace.isNotBlank()) {
                 put(1, "BIRT")
-                if (p.born != null) put(2, "DATE", p.born.toString())
+                if (p.born != null) put(2, "DATE", p.birthDate.gedcom())
                 if (p.birthPlace.isNotBlank()) text(2, "PLAC", p.birthPlace.trim())
             }
             if (p.died != null || p.deathPlace.isNotBlank()) {
                 put(1, "DEAT")
-                if (p.died != null) put(2, "DATE", p.died.toString())
+                if (p.died != null) put(2, "DATE", p.deathDate.gedcom())
                 if (p.deathPlace.isNotBlank()) text(2, "PLAC", p.deathPlace.trim())
             }
             if (p.notes.isNotBlank()) text(1, "NOTE", p.notes.trim())
+            for (e in details.events[p.id].orEmpty()) event(1, e)
+            for (s in details.sources[p.id].orEmpty()) citation(1, s)
             for (f in childIn[p.id].orEmpty()) put(1, "FAMC", "@F$f@")
             for (f in spouseIn[p.id].orEmpty()) put(1, "FAMS", "@F$f@")
         }
@@ -371,6 +555,11 @@ object Gedcom {
             if (husband != null) put(1, "HUSB", "@I$husband@")
             if (wife != null) put(1, "WIFE", "@I$wife@")
             for (child in children) put(1, "CHIL", "@I$child@")
+            if (key.size == 2) for (e in details.couples[key[0] to key[1]].orEmpty()) event(1, e)
+        }
+        for ((title, number) in sourceNumbers) {
+            put(0, "SOUR", xref = "S$number")
+            text(1, "TITL", title)
         }
         put(0, "TRLR")
         return out.toString()

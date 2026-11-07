@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +47,7 @@ import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.describeAge
+import com.inamibrahim.kinhold.model.relativesOf
 import com.inamibrahim.kinhold.tree.layoutFocus
 
 /**
@@ -58,9 +60,13 @@ fun TreeScreen(
     focusId: Int,
     onFocus: (Int) -> Unit,
     onAdd: (Relation) -> Unit,
+    onAddChild: (Int) -> Unit,
     onEdit: (Int) -> Unit,
+    onDetails: (Int) -> Unit,
     lastBackup: Long?,
+    onHelp: () -> Unit,
     onBackup: () -> Unit,
+    onSettings: () -> Unit,
     undoText: String?,
     onUndo: () -> Unit,
 ) {
@@ -96,6 +102,8 @@ fun TreeScreen(
                 Pill("Recenter", selected = false, onClick = { state.show(layout) })
                 Pill("Oldest", selected = false, onClick = { family.oldest()?.let { onFocus(it.id) } })
                 Pill("Backup", selected = false, onClick = onBackup)
+                Pill("Help", selected = false, onClick = onHelp)
+                Pill("Settings", selected = false, onClick = onSettings)
             }
             Box(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
                 TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
@@ -136,7 +144,10 @@ fun TreeScreen(
                     family = family,
                     person = focus,
                     onAdd = onAdd,
+                    onAddChild = { onAddChild(focus.id) },
                     onEdit = { onEdit(focus.id) },
+                    onDetails = { onDetails(focus.id) },
+                    onFocus = onFocus,
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -153,7 +164,10 @@ private fun FocusCard(
     family: Family,
     person: Person,
     onAdd: (Relation) -> Unit,
+    onAddChild: () -> Unit,
     onEdit: () -> Unit,
+    onDetails: () -> Unit,
+    onFocus: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val parents = family.parentsOf(person.id).size
@@ -161,27 +175,57 @@ private fun FocusCard(
     val children = family.childrenOf(person.id).size
     AppCard(modifier) {
         Column(Modifier.padding(20.dp)) {
-            Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text)
-            if (person.years().isNotEmpty()) {
-                Text(
-                    person.years(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Palette.TextMuted,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(person, 64.dp, ring = 3.dp)
+                Column(Modifier.padding(start = 16.dp)) {
+                    Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (person.lifeDates().isNotEmpty()) {
+                        Text(
+                            person.lifeDates(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Palette.TextMuted,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Text(
+                        "${plural(parents, "parent")}  ·  ${plural(spouses, "spouse")}  ·  ${plural(children, "child", "children")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.Accent,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
-            Text(
-                "${plural(parents, "parent")}  ·  ${plural(spouses, "spouse")}  ·  ${plural(children, "child", "children")}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.Accent,
-                modifier = Modifier.padding(top = 8.dp, bottom = 14.dp),
-            )
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Siblings, half-siblings and step relatives, worked out from the links. Tapping one moves the focus to them.
+            val relatives = remember(family, person.id) { family.relativesOf(person.id) }
+            if (relatives.isNotEmpty()) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (r in relatives) {
+                        Column(
+                            Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Palette.SurfaceHigh)
+                                .clickable { onFocus(r.person.id) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) {
+                            Text(r.label, style = MaterialTheme.typography.labelMedium, color = Palette.Accent)
+                            Text(r.person.name, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, maxLines = 1)
+                        }
+                    }
+                }
+            }
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Pill("Details", selected = false, onClick = onDetails)
                 Pill("Edit", selected = false, onClick = onEdit)
-                // A person has at most two parents. Several spouses are not drawn yet, so one is offered.
+                // A person has at most two parents, but can have any number of spouses.
                 if (parents < 2) Pill("+ Parent", selected = false, onClick = { onAdd(Relation.ParentOf(person.id)) })
-                if (spouses == 0) Pill("+ Spouse", selected = false, onClick = { onAdd(Relation.SpouseOf(person.id)) })
-                Pill("+ Child", selected = false, onClick = { onAdd(Relation.ChildOf(person.id)) })
+                Pill("+ Spouse", selected = false, onClick = { onAdd(Relation.SpouseOf(person.id)) })
+                Pill("+ Child", selected = false, onClick = onAddChild)
             }
         }
     }
@@ -231,20 +275,24 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, modifier: Modi
             }
             LazyColumn(Modifier.heightIn(max = 320.dp).padding(top = if (results.isEmpty()) 0.dp else 8.dp)) {
                 items(results, key = { it.id }) { p ->
-                    Column(
+                    Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
                             .clickable { onPick(p) }
                             .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(p.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-                        // Several people can share a name, so say whose child each one is.
-                        val parents = family.parentsOf(p.id)
-                        val details = listOf(p.years(), if (parents.isEmpty()) "" else "child of ${parents.joinToString(" & ") { it.name }}")
-                            .filter { it.isNotEmpty() }
-                            .joinToString("  ·  ")
-                        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                        Avatar(p, 40.dp)
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text(p.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                            // Several people can share a name, so say whose child each one is.
+                            val parents = family.parentsOf(p.id)
+                            val details = listOf(p.years(), if (parents.isEmpty()) "" else "child of ${parents.joinToString(" & ") { it.name }}")
+                                .filter { it.isNotEmpty() }
+                                .joinToString("  ·  ")
+                            if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                        }
                     }
                 }
             }

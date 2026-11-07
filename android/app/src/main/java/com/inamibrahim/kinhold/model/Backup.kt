@@ -4,44 +4,63 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
-/** Everything in a tree, as stored in a backup file. [created] is when the backup was made (ISO time), or empty. */
+/**
+ * Everything in a tree, as stored in a backup file. [created] is when the backup was made (ISO time), or empty.
+ * [photos] holds each photo as JPEG bytes, by the id of the person it belongs to. [details] holds events and sources.
+ */
 class BackupData(
     val people: List<Person>,
     val parentLinks: List<Pair<Int, Int>>,
     val partnerships: List<Pair<Int, Int>>,
     val created: String = "",
+    val photos: Map<Int, ByteArray> = emptyMap(),
+    val details: TreeDetails = TreeDetails.Empty,
 )
 
 /** A backup file that cannot be used. [message] is written for the person, not for a programmer. */
 class BackupException(message: String) : Exception(message)
 
 /**
- * The backup file: one JSON document holding every person and link, with a format name and version so a future
- * Kinhold can still read an old backup. Reading checks everything before the tree is touched, so a damaged or wrong
- * file is refused and nothing is lost. Fields this version does not know are ignored.
+ * The backup file: one JSON document holding every person, link and photo (as Base64 text), with a format name and
+ * version so a future Kinhold can still read an old backup. Version 1 had no photos and version 2 no events or sources; both are still read. Reading checks
+ * everything before the tree is touched, so a damaged or wrong file is refused and nothing is lost. Fields this
+ * version does not know are ignored.
  */
 object BackupCodec {
     const val FORMAT = "kinhold-backup"
-    const val VERSION = 1
+    const val VERSION = 3
     private const val MAX_PEOPLE = 200_000
+    private const val MAX_PHOTO_BYTES = 3_000_000
     private const val NOT_A_BACKUP = "This file is not a Kinhold backup."
     private const val DAMAGED = "This backup is damaged and cannot be read."
 
-    fun encode(family: Family, created: String): String {
+    fun encode(
+        family: Family,
+        created: String,
+        photos: Map<Int, ByteArray> = emptyMap(),
+        details: TreeDetails = TreeDetails.Empty,
+    ): String {
         val people = JSONArray()
+        val base64 = java.util.Base64.getEncoder()
         for (p in family.people) {
-            people.put(
-                JSONObject()
-                    .put("id", p.id)
-                    .put("given", p.given)
-                    .put("surname", p.surname)
-                    .put("sex", p.sex.ordinal)
-                    .put("born", p.born ?: JSONObject.NULL)
-                    .put("died", p.died ?: JSONObject.NULL)
-                    .put("birthPlace", p.birthPlace)
-                    .put("deathPlace", p.deathPlace)
-                    .put("notes", p.notes),
-            )
+            val o = JSONObject()
+                .put("id", p.id)
+                .put("given", p.given)
+                .put("surname", p.surname)
+                .put("sex", p.sex.ordinal)
+                .put("born", p.born ?: JSONObject.NULL)
+                .put("died", p.died ?: JSONObject.NULL)
+                .put("birthPlace", p.birthPlace)
+                .put("deathPlace", p.deathPlace)
+                .put("notes", p.notes)
+            p.birthMonth?.let { o.put("birthMonth", it) }
+            p.birthDay?.let { o.put("birthDay", it) }
+            p.deathMonth?.let { o.put("deathMonth", it) }
+            p.deathDay?.let { o.put("deathDay", it) }
+            details.events[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("events", EventJson.events(it)) }
+            details.sources[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("sources", EventJson.sources(it)) }
+            photos[p.id]?.let { o.put("photo", base64.encodeToString(it)) }
+            people.put(o)
         }
         return JSONObject()
             .put("format", FORMAT)
@@ -50,6 +69,15 @@ object BackupCodec {
             .put("people", people)
             .put("parentLinks", pairs(family.parentLinks()))
             .put("partnerships", pairs(family.partnerships()))
+            .put(
+                "coupleEvents",
+                JSONArray().apply {
+                    for ((pair, events) in details.couples) {
+                        if (events.isEmpty()) continue
+                        put(JSONObject().put("a", pair.first).put("b", pair.second).put("events", EventJson.events(events)))
+                    }
+                },
+            )
             .toString()
     }
 
@@ -70,12 +98,25 @@ object BackupCodec {
             if (array.length() > MAX_PEOPLE) throw BackupException(DAMAGED)
             val people = ArrayList<Person>(array.length())
             val ids = HashSet<Int>()
+            val photos = HashMap<Int, ByteArray>()
+            val personEvents = LinkedHashMap<Int, List<Event>>()
+            val personSources = LinkedHashMap<Int, List<Source>>()
             for (i in 0 until array.length()) {
                 val o = array.getJSONObject(i)
                 val id = o.getInt("id")
                 if (!ids.add(id)) throw BackupException(DAMAGED)
                 val born = year(o, "born")
                 val died = year(o, "died")
+                val birthMonth = small(o, "birthMonth")
+                val birthDay = small(o, "birthDay")
+                val deathMonth = small(o, "deathMonth")
+                val deathDay = small(o, "deathDay")
+                if (!PartialDate(born, birthMonth, birthDay).isValid || !PartialDate(died, deathMonth, deathDay).isValid) {
+                    throw BackupException(DAMAGED)
+                }
+                if (o.has("events") && !o.isNull("events")) personEvents[id] = EventJson.readEvents(o.getJSONArray("events"))
+                if (o.has("sources") && !o.isNull("sources")) personSources[id] = EventJson.readSources(o.getJSONArray("sources"))
+                if (!o.isNull("photo")) photos[id] = photo(o.getString("photo"))
                 people += Person(
                     id = id,
                     given = o.optString("given", ""),
@@ -86,16 +127,47 @@ object BackupCodec {
                     birthPlace = o.optString("birthPlace", ""),
                     deathPlace = o.optString("deathPlace", ""),
                     notes = o.optString("notes", ""),
+                    birthMonth = birthMonth,
+                    birthDay = birthDay,
+                    deathMonth = deathMonth,
+                    deathDay = deathDay,
                 )
             }
             val links = readPairs(root.optJSONArray("parentLinks"), ids).distinct()
             val partnerships = readPairs(root.optJSONArray("partnerships"), ids)
                 .map { (a, b) -> minOf(a, b) to maxOf(a, b) }
                 .distinct()
-            return BackupData(people, links, partnerships, root.optString("created", ""))
+            val coupleEvents = LinkedHashMap<Pair<Int, Int>, List<Event>>()
+            root.optJSONArray("coupleEvents")?.let { list ->
+                for (i in 0 until list.length()) {
+                    val o = list.getJSONObject(i)
+                    val a = o.getInt("a")
+                    val b = o.getInt("b")
+                    val key = minOf(a, b) to maxOf(a, b)
+                    // Events of a couple that is not in the file mean the file was altered or cut short.
+                    if (key !in partnerships) throw BackupException(DAMAGED)
+                    coupleEvents[key] = EventJson.readEvents(o.getJSONArray("events"))
+                }
+            }
+            return BackupData(
+                people, links, partnerships, root.optString("created", ""), photos,
+                TreeDetails(personEvents, personSources, coupleEvents),
+            )
         } catch (e: JSONException) {
             throw BackupException(DAMAGED)
         }
+    }
+
+    /** A photo from its Base64 text. It must be a JPEG of a sensible size, as the app only ever stores those. */
+    private fun photo(text: String): ByteArray {
+        val bytes = try {
+            java.util.Base64.getDecoder().decode(text)
+        } catch (e: IllegalArgumentException) {
+            throw BackupException(DAMAGED)
+        }
+        val isJpeg = bytes.size > 4 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+        if (!isJpeg || bytes.size > MAX_PHOTO_BYTES) throw BackupException(DAMAGED)
+        return bytes
     }
 
     private fun year(o: JSONObject, key: String): Int? {
@@ -103,6 +175,14 @@ object BackupCodec {
         val y = o.getInt(key)
         if (y !in 0..9999) throw BackupException(DAMAGED)
         return y
+    }
+
+    /** A month or day: a small whole number, or null when the field is missing. Whether it fits a date is checked after. */
+    private fun small(o: JSONObject, key: String): Int? {
+        if (!o.has(key) || o.isNull(key)) return null
+        val n = o.getInt(key)
+        if (n !in 0..99) throw BackupException(DAMAGED)
+        return n
     }
 
     private fun pairs(list: List<Pair<Int, Int>>): JSONArray {
@@ -134,5 +214,97 @@ fun describeAge(then: Long, now: Long): String {
         days == 1 -> "yesterday"
         days < 60 -> "$days days ago"
         else -> "${days / 30} months ago"
+    }
+}
+
+/**
+ * Events and sources as JSON, for backups and for keeping a half-filled form across a screen rotation. Reading is strict:
+ * a date that cannot exist, or more events than [Limits.EVENTS], means the file is damaged. Text longer than the limits
+ * is cut. Fields that are not known are ignored, and an event kind this version does not know becomes a general event.
+ */
+object EventJson {
+    private const val DAMAGED = "This backup is damaged and cannot be read."
+
+    fun sources(list: List<Source>): JSONArray = JSONArray().apply {
+        for (s in list) put(JSONObject().put("title", s.title).put("citation", s.citation).put("note", s.note))
+    }
+
+    fun events(list: List<Event>): JSONArray = JSONArray().apply {
+        for (e in list) {
+            val o = JSONObject().put("kind", e.kind.key).put("detail", e.detail).put("place", e.place).put("note", e.note)
+            e.date.year?.let { o.put("year", it) }
+            e.date.month?.let { o.put("month", it) }
+            e.date.day?.let { o.put("day", it) }
+            if (e.sources.isNotEmpty()) o.put("sources", sources(e.sources))
+            put(o)
+        }
+    }
+
+    fun readSources(array: JSONArray, editing: Boolean = false): List<Source> {
+        if (array.length() > Limits.SOURCES) throw BackupException(DAMAGED)
+        val out = ArrayList<Source>(array.length())
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            val raw = Source(o.optString("title", ""), o.optString("citation", ""), o.optString("note", ""))
+            // While a form is being edited, blank and untrimmed entries are kept so typing a space or adding a source works.
+            val s = if (editing) raw else raw.clamped()
+            if (editing) {
+                out += s
+                continue
+            }
+            if (!s.isBlank) out += s
+        }
+        return out
+    }
+
+    fun readEvents(array: JSONArray): List<Event> {
+        if (array.length() > Limits.EVENTS) throw BackupException(DAMAGED)
+        val out = ArrayList<Event>(array.length())
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            val key = o.optString("kind", "")
+            val kind = EventKind.fromKey(key)
+            val date = PartialDate(number(o, "year"), number(o, "month"), number(o, "day"))
+            if (!date.isValid) throw BackupException(DAMAGED)
+            val detail = o.optString("detail", "").ifBlank { if (kind == null) key else "" }
+            val sources = o.optJSONArray("sources")?.let(::readSources).orEmpty()
+            out += Event(kind ?: EventKind.Custom, detail, date, o.optString("place", ""), o.optString("note", ""), sources).clamped()
+        }
+        return out
+    }
+
+    private fun number(o: JSONObject, key: String): Int? = if (!o.has(key) || o.isNull(key)) null else o.getInt(key)
+
+    /** A person's details as one piece of text, for the form to keep across rotation. */
+    fun encodeDetails(d: PersonDetails): String = JSONObject()
+        .put("events", events(d.events))
+        .put("sources", sources(d.sources))
+        .put(
+            "couples",
+            JSONArray().apply {
+                for ((partner, list) in d.coupleEvents) put(JSONObject().put("partner", partner).put("events", events(list)))
+            },
+        )
+        .toString()
+
+    /** Reads what [encodeDetails] wrote. Nothing (empty details) if the text cannot be read. */
+    fun decodeDetails(text: String, editing: Boolean = false): PersonDetails = try {
+        val o = JSONObject(text)
+        val couples = LinkedHashMap<Int, List<Event>>()
+        o.optJSONArray("couples")?.let { a ->
+            for (i in 0 until a.length()) {
+                val c = a.getJSONObject(i)
+                couples[c.getInt("partner")] = readEvents(c.getJSONArray("events"))
+            }
+        }
+        PersonDetails(
+            o.optJSONArray("events")?.let(::readEvents).orEmpty(),
+            o.optJSONArray("sources")?.let { readSources(it, editing) }.orEmpty(),
+            couples,
+        )
+    } catch (e: JSONException) {
+        PersonDetails.Empty
+    } catch (e: BackupException) {
+        PersonDetails.Empty
     }
 }

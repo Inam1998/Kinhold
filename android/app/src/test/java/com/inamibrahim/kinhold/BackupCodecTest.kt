@@ -59,6 +59,39 @@ class BackupCodecTest {
         assertEquals(person.notes, p.notes)
     }
 
+    private fun jpeg(size: Int) = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + ByteArray(size) { (it % 251).toByte() }
+
+    @Test
+    fun photosSurviveBeingWrittenAndReadBackByteForByte() {
+        val family = Family.of(listOf(Person(1, "A", "X"), Person(2, "B", "X"), Person(3, "C", "X")), emptyList(), emptyList())
+        val photos = mapOf(1 to jpeg(5000), 3 to jpeg(120_000))
+        val data = BackupCodec.decode(BackupCodec.encode(family, "", photos))
+        assertEquals(setOf(1, 3), data.photos.keys)
+        assertTrue(photos.getValue(1).contentEquals(data.photos.getValue(1)))
+        assertTrue(photos.getValue(3).contentEquals(data.photos.getValue(3)))
+    }
+
+    @Test
+    fun aBackupWithoutPhotosHasNoPhotosAndVersionOneFilesStillOpen() {
+        assertTrue(BackupCodec.decode(BackupCodec.encode(Family.Empty, "")).photos.isEmpty())
+        val v1 = """{"format":"kinhold-backup","version":1,"people":[{"id":1,"given":"Old"}],"parentLinks":[],"partnerships":[]}"""
+        val data = BackupCodec.decode(v1)
+        assertEquals("Old", data.people.single().given)
+        assertTrue(data.photos.isEmpty())
+    }
+
+    @Test
+    fun badPhotosMakeTheWholeBackupDamaged() {
+        fun withPhoto(value: String) =
+            """{"format":"kinhold-backup","version":2,"people":[{"id":1,"photo":$value}],"parentLinks":[],"partnerships":[]}"""
+        val notBase64 = "\"%%%not base64%%%\""
+        val notAJpeg = "\"" + java.util.Base64.getEncoder().encodeToString("just some text".toByteArray()) + "\""
+        val tooBig = "\"" + java.util.Base64.getEncoder().encodeToString(jpeg(3_100_000)) + "\""
+        for (value in listOf(notBase64, notAJpeg, tooBig, "5", "[1,2]")) {
+            assertEquals("Wrong message for $value", "This backup is damaged and cannot be read.", rejects(withPhoto(value)).message)
+        }
+    }
+
     @Test
     fun anEmptyTreeIsAValidBackup() {
         assertEquals(0, BackupCodec.decode(BackupCodec.encode(Family.Empty, "")).people.size)
@@ -75,7 +108,7 @@ class BackupCodecTest {
 
     @Test
     fun aBackupFromANewerVersionIsRefusedWithAnUpdateHint() {
-        val e = rejects("""{"format":"kinhold-backup","version":2,"people":[]}""")
+        val e = rejects("""{"format":"kinhold-backup","version":4,"people":[]}""")
         assertTrue(e.message!!.contains("newer version"))
     }
 

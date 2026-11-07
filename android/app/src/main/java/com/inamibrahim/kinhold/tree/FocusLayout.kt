@@ -1,7 +1,6 @@
 package com.inamibrahim.kinhold.tree
 
 import com.inamibrahim.kinhold.model.Family
-import com.inamibrahim.kinhold.model.FamilyUnit
 import com.inamibrahim.kinhold.model.Person
 import kotlin.math.max
 import kotlin.math.min
@@ -116,16 +115,25 @@ fun layoutFocus(
 }
 
 /**
- * The person (with their first spouse) and, while [depthLeft] allows, a unit for each child. Where the depth runs out
- * the number of children left out is recorded in [hidden].
+ * The person with all their spouses and, while [depthLeft] allows, a unit for each child, grouped by the other parent.
+ * Spouses are placed by marriage date where one is recorded, then by birth year, then by the order they were added. A child whose
+ * other parent is not one of the spouses hangs from the person alone. Where the depth runs out the number of children
+ * left out is recorded in [hidden].
  */
-private fun descendantUnit(family: Family, id: Int, depthLeft: Int, hidden: MutableMap<Int, Int>): FamilyUnit {
-    val unit = FamilyUnit(listOfNotNull(family.person(id), family.spousesOf(id).firstOrNull()))
+private fun descendantUnit(family: Family, id: Int, depthLeft: Int, hidden: MutableMap<Int, Int>): UnitNode {
+    val head = family.person(id)
+    val spouses = family.spousesInOrder(id)
     val kids = family.childrenOf(id)
-    if (depthLeft > 0) {
-        for (kid in kids) unit.children += descendantUnit(family, kid.id, depthLeft - 1, hidden)
-    } else if (kids.isNotEmpty()) {
-        hidden[id] = kids.size
+    if (depthLeft <= 0) {
+        if (kids.isNotEmpty()) hidden[id] = kids.size
+        return UnitNode(head, spouses)
     }
-    return unit
+    val bySpouse = LinkedHashMap<Int?, MutableList<UnitNode>>()
+    for (kid in kids) {
+        val otherParents = family.parentsOf(kid.id).map { it.id }.toSet()
+        val spouse = spouses.firstOrNull { it.id in otherParents }
+        bySpouse.getOrPut(spouse?.id) { mutableListOf() } += descendantUnit(family, kid.id, depthLeft - 1, hidden)
+    }
+    val groups = bySpouse.map { (spouseId, units) -> ChildGroup(spouses.firstOrNull { it.id == spouseId }, units) }
+    return UnitNode(head, spouses, groups)
 }

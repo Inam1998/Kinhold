@@ -14,7 +14,31 @@ class Person(
     val birthPlace: String = "",
     val deathPlace: String = "",
     val notes: String = "",
+    /** When the photo was last set (0 if there is none). The photo itself is loaded only when it is drawn. */
+    val photoStamp: Long = 0L,
+    /** Month and day of birth and death, when known. They only exist alongside a year. */
+    val birthMonth: Int? = null,
+    val birthDay: Int? = null,
+    val deathMonth: Int? = null,
+    val deathDay: Int? = null,
 ) {
+    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay).normalized()
+    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay).normalized()
+
+    /** "12 Mar 1850 – 3 Jan 1920" with whatever is known, or an empty string. */
+    fun lifeDates(): String {
+        val b = birthDate.text()
+        val d = deathDate.text()
+        return when {
+            b.isNotEmpty() && d.isNotEmpty() -> "$b – $d"
+            b.isNotEmpty() -> "b. $b"
+            d.isNotEmpty() -> "d. $d"
+            else -> ""
+        }
+    }
+
+    val hasPhoto: Boolean get() = photoStamp > 0
+
     /** The full name as written on a card; "Unnamed" if neither part is filled in. */
     val name: String
         get() = listOf(given, surname).filter { it.isNotBlank() }.joinToString(" ").ifEmpty { "Unnamed" }
@@ -27,7 +51,7 @@ class Person(
         else -> ""
     }
 
-    fun toDraft() = PersonDraft(given, surname, sex, born, died, birthPlace, deathPlace, notes)
+    fun toDraft() = PersonDraft(given, surname, sex, born, died, birthPlace, deathPlace, notes, birthMonth, birthDay, deathMonth, deathDay)
 }
 
 /** What the form fills in. It becomes a [Person] with an id when it is saved. */
@@ -40,14 +64,24 @@ class PersonDraft(
     val birthPlace: String = "",
     val deathPlace: String = "",
     val notes: String = "",
+    val birthMonth: Int? = null,
+    val birthDay: Int? = null,
+    val deathMonth: Int? = null,
+    val deathDay: Int? = null,
 ) {
+    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay)
+    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay)
+
     /** Someone needs at least part of a name. */
     val hasName: Boolean get() = given.isNotBlank() || surname.isNotBlank()
 
     /** A person cannot die before they were born. */
-    val datesMakeSense: Boolean get() = born == null || died == null || died >= born
+    val datesMakeSense: Boolean get() = born == null || died == null || !deathDate.isBefore(birthDate)
 
-    val isValid: Boolean get() = hasName && datesMakeSense
+    /** Months and days that are not real ones (a 13th month, 31 February) are refused. */
+    val datesAreReal: Boolean get() = birthDate.isValid && deathDate.isValid
+
+    val isValid: Boolean get() = hasName && datesMakeSense && datesAreReal
 }
 
 /**

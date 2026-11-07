@@ -13,8 +13,8 @@ android {
         // Old and slow phones count as much as new ones, so the floor is Android 8.
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 1
+        versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

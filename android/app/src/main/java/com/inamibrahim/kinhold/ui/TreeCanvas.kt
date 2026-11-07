@@ -1,7 +1,10 @@
 package com.inamibrahim.kinhold.ui
 
 import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.exponentialDecay
@@ -143,6 +146,11 @@ class TreeViewState {
     }
 }
 
+private const val CARD_RADIUS = 16f
+private const val AVATAR_RADIUS = 22f
+private const val AVATAR_CENTER = 12f + AVATAR_RADIUS
+private const val TEXT_LEFT = 68f
+
 private val NameStyle = TextStyle(fontFamily = AppFont, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 private val YearsStyle = TextStyle(fontFamily = AppFont, fontSize = 11.sp, fontWeight = FontWeight.Normal)
 private val BadgeStyle = TextStyle(fontFamily = AppFont, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -163,7 +171,14 @@ fun TreeCanvas(
 ) {
     state.density = LocalDensity.current.density
     val scope = rememberCoroutineScope()
+    val avatars = LocalAvatars.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
+    // The tree fades in when the focus moves, which is a change of the layer's opacity only, so it costs no redraw.
+    val fade = remember { Animatable(1f) }
+    LaunchedEffect(layout) {
+        fade.snapTo(0.15f)
+        fade.animateTo(1f, tween(240))
+    }
     val names = remember(layout) { HashMap<Int, TextLayoutResult>() }
     val years = remember(layout) { HashMap<Int, TextLayoutResult>() }
     val badges = remember(layout) { HashMap<String, TextLayoutResult>() }
@@ -174,7 +189,7 @@ fun TreeCanvas(
             // Cards pan beyond the canvas, so they must be cut at its edge. The layer is also what keeps a pan or
             // pinch from redrawing the header and background gradients behind it on every frame.
             .clipToBounds()
-            .graphicsLayer()
+            .graphicsLayer { alpha = fade.value }
             .onSizeChanged { state.size = it }
             .pointerInput(Unit) {
                 detectTreeGestures(
@@ -209,8 +224,6 @@ fun TreeCanvas(
         val mutedColor = Palette.TextMuted
         val accent = Palette.Accent
         val badgeColor = Palette.AccentDeep
-        val sky = Tones.Sky
-        val rose = Tones.Rose
 
         withTransform({
             translate(left = off.x, top = off.y)
@@ -225,36 +238,40 @@ fun TreeCanvas(
                 val x2 = e[i + 2]
                 val y2 = e[i + 3]
                 if (max(x1, x2) >= left && min(x1, x2) <= right && max(y1, y2) >= top && min(y1, y2) <= bottom) {
-                    drawLine(lineColor, Offset(x1, y1), Offset(x2, y2), strokeWidth = stroke)
+                    drawLine(lineColor, Offset(x1, y1), Offset(x2, y2), strokeWidth = stroke, cap = StrokeCap.Round)
                 }
                 i += 4
             }
 
-            val radius = CornerRadius(10f)
+            val radius = CornerRadius(CARD_RADIUS)
             val boxSize = Size(TreeMetrics.NODE_W, TreeMetrics.NODE_H)
+            val shadow = Color.Black.copy(alpha = if (Palette.dark) 0.35f else 0.12f)
             for (p in layout.people) {
                 if (p.x > right || p.x + TreeMetrics.NODE_W < left || p.y > bottom || p.y + TreeMetrics.NODE_H < top) continue
-                val tone = when (p.person.sex) {
-                    Sex.Male -> sky
-                    Sex.Female -> rose
-                    Sex.Unknown -> mutedColor
-                }
+                val tone = toneFor(p.person.sex)
                 val topLeft = Offset(p.x, p.y)
-                if (nodeScreenW < 26f) {
+                if (nodeScreenW < 34f) {
                     // Too small for a card: a coloured block still shows where the family is wide or narrow.
                     drawRoundRect(tone.copy(alpha = 0.85f), topLeft, boxSize, radius)
                     continue
                 }
                 val isFocus = p.person.id == layout.focusId
+                // A soft shadow under every card, and a glow around the focused one.
+                drawRoundRect(shadow, topLeft + Offset(0f, 3f), boxSize, radius)
+                if (isFocus) {
+                    drawRoundRect(accent.copy(alpha = 0.22f), topLeft - Offset(3f, 3f), Size(boxSize.width + 6f, boxSize.height + 6f), CornerRadius(CARD_RADIUS + 3f), style = Stroke(width = 6f))
+                }
                 drawRoundRect(if (isFocus) focusColor else cardColor, topLeft, boxSize, radius)
-                drawRoundRect(tone, topLeft, Size(5f, TreeMetrics.NODE_H), CornerRadius(2.5f))
                 if (isFocus) drawRoundRect(accent, topLeft, boxSize, radius, style = Stroke(width = 2.5f))
-                if (nodeScreenW >= 64f) {
+                if (nodeScreenW >= 60f) {
+                    drawAvatar(Offset(p.x + AVATAR_CENTER, p.y + TreeMetrics.NODE_H / 2), AVATAR_RADIUS, avatars.get(p.person), tone, 2.5f)
+                }
+                if (nodeScreenW >= 110f) {
                     val name = names.getOrPut(p.person.id) { measurer.measureLine(p.person.name, NameStyle) }
-                    drawText(name, textColor, Offset(p.x + 14f, p.y + 9f))
-                    if (nodeScreenW >= 100f && p.person.years().isNotEmpty()) {
+                    drawText(name, textColor, Offset(p.x + TEXT_LEFT, p.y + 15f))
+                    if (nodeScreenW >= 140f && p.person.years().isNotEmpty()) {
                         val y = years.getOrPut(p.person.id) { measurer.measureLine(p.person.years(), YearsStyle) }
-                        drawText(y, mutedColor, Offset(p.x + 14f, p.y + 31f))
+                        drawText(y, mutedColor, Offset(p.x + TEXT_LEFT, p.y + 36f))
                     }
                 }
                 if (p.moreBelow > 0) {
@@ -327,6 +344,6 @@ private fun TextMeasurer.measureLine(text: String, style: TextStyle, wide: Boole
     style = style,
     overflow = TextOverflow.Ellipsis,
     maxLines = 1,
-    constraints = Constraints(maxWidth = if (wide) 200 else (TreeMetrics.NODE_W - 24f).toInt()),
+    constraints = Constraints(maxWidth = if (wide) 200 else (TreeMetrics.NODE_W - TEXT_LEFT - 10f).toInt()),
     density = UnitDensity,
 )

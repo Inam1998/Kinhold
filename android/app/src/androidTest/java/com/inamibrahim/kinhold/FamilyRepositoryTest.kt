@@ -64,7 +64,7 @@ class FamilyRepositoryTest {
         val me = repo.addPerson(PersonDraft("Me", "Khan", Sex.Male))
         val mum = repo.addPerson(PersonDraft("Mum", "Khan", Sex.Female), Relation.ParentOf(me))
         val wife = repo.addPerson(PersonDraft("Wife", "Ali", Sex.Female), Relation.SpouseOf(me))
-        val kid = repo.addPerson(PersonDraft("Kid", "Khan"), Relation.ChildOf(me))
+        val kid = repo.addPerson(PersonDraft("Kid", "Khan"), Relation.ChildOf(me, wife))
         val f = repo.family.value
         assertEquals(listOf(mum), f.parentsOf(me).map { it.id })
         assertEquals(listOf(wife), f.spousesOf(me).map { it.id })
@@ -101,7 +101,7 @@ class FamilyRepositoryTest {
         val repo = memoryRepo()
         val parent = repo.addPerson(PersonDraft("Parent"))
         val spouse = repo.addPerson(PersonDraft("Spouse"), Relation.SpouseOf(parent))
-        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent))
+        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent, spouse))
         repo.deletePerson(parent)
         val f = repo.family.value
         assertTrue(parent !in f)
@@ -141,7 +141,7 @@ class FamilyRepositoryTest {
         val grandparent = repo.addPerson(PersonDraft("Grandparent"))
         val parent = repo.addPerson(PersonDraft("Parent", "Khan", Sex.Male, 1960), Relation.ChildOf(grandparent))
         val spouse = repo.addPerson(PersonDraft("Spouse"), Relation.SpouseOf(parent))
-        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent))
+        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent, spouse))
         val deleted = repo.deletePerson(parent)!!
         assertTrue(parent !in repo.family.value)
         repo.restoreDeleted(deleted)

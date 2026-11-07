@@ -6,16 +6,29 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
+import com.inamibrahim.kinhold.ui.AppSettings
 import com.inamibrahim.kinhold.ui.KinholdApp
 import com.inamibrahim.kinhold.ui.KinholdTheme
+import com.inamibrahim.kinhold.ui.isDark
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-        )
-        setContent { KinholdTheme { KinholdApp() } }
+        AppSettings.load(this)
+        setContent {
+            val mode = AppSettings.mode
+            val dark = isDark(mode, isSystemInDarkTheme())
+            // Light theme needs dark status and navigation icons, so the bars follow the theme.
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+                )
+                onDispose {}
+            }
+            KinholdTheme(mode) { KinholdApp() }
+        }
     }
 }

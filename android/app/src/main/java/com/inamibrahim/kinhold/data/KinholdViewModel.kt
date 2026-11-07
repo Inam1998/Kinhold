@@ -15,6 +15,7 @@ import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Gedcom
 import com.inamibrahim.kinhold.model.GedcomException
 import com.inamibrahim.kinhold.model.GedcomResult
+import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.PersonDraft
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -53,14 +54,30 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun add(draft: PersonDraft, relation: Relation?, onAdded: (Int) -> Unit) {
-        viewModelScope.launch { onAdded(repo.addPerson(draft, relation)) }
+    fun add(draft: PersonDraft, relation: Relation?, photo: PreparedPhoto?, details: PersonDetails, onAdded: (Int) -> Unit) {
+        viewModelScope.launch { onAdded(repo.addPerson(draft, relation, photo, details)) }
     }
 
-    fun update(id: Int, draft: PersonDraft, onDone: () -> Unit) {
+    fun update(id: Int, draft: PersonDraft, photo: PhotoChange, details: PersonDetails, onDone: () -> Unit) {
         viewModelScope.launch {
-            repo.updatePerson(id, draft)
+            repo.updatePerson(id, draft, photo, details)
             onDone()
+        }
+    }
+
+    /** A person's events, sources and couple events, read when a screen needs them (never all at once). */
+    suspend fun details(id: Int): PersonDetails = repo.details(id)
+
+    /** The small square picture of a person, for the tree and the lists. Null if they have no photo. */
+    suspend fun thumb(id: Int): ByteArray? = repo.thumb(id)
+
+    /** Reads and shrinks a picture the person chose. Nothing is stored until the form is saved. */
+    fun preparePhoto(uri: Uri, onResult: (Result<PreparedPhoto>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) { PhotoCodec.prepare(getApplication<Application>().contentResolver, uri) }
+            }
+            onResult(result)
         }
     }
 

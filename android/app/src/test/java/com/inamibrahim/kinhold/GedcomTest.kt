@@ -7,6 +7,7 @@ import com.inamibrahim.kinhold.model.GedcomResult
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.Sex
 import com.inamibrahim.kinhold.model.TestFamily
+import com.inamibrahim.kinhold.model.TreeDetails
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -121,9 +122,10 @@ class GedcomTest {
         val report = read(sample).report
         assertEquals(5, report.individuals)
         assertEquals(2, report.families)
-        assertEquals(3, report.datesReducedToYear) // 12 JAN 1950, BET 2000 AND 2005, ABT 1952
-        assertEquals(3, report.ignoredEvents)      // OCCU, RESI and the marriage
-        assertEquals(1, report.ignoredSources)
+        assertEquals(2, report.datesSimplified)    // BET 2000 AND 2005 and ABT 1952; 12 JAN 1950 is kept whole
+        assertEquals(0, report.ignoredEvents)
+        assertEquals(3, report.eventsKept)         // OCCU, RESI and the marriage
+        assertEquals(1, report.ignoredSources)      // @S1@ has no record in the file
         assertEquals(1, report.ignoredMedia)
         assertEquals(1, report.skippedLinks)       // the child @I99@ is not in the file
     }
@@ -133,8 +135,8 @@ class GedcomTest {
         val text = read(sample).report.summary(currentPeople = 12).joinToString("\n")
         assertTrue(text.contains("5 people in 2 families"))
         assertTrue(text.contains("Your tree has 12 people"))
-        assertTrue(text.contains("Only the year is kept"))
-        assertTrue(text.contains("Not kept: 3 events"))
+        assertTrue(text.contains("Only the first date in each is kept"))
+        assertTrue(text.contains("3 events and 0 source citations, which are kept"))
         assertTrue(text.contains("1 link to a person missing from the file was skipped."))
         assertTrue(text.contains("1 source citation,"))
         assertTrue(text.contains("1 photo or file."))
@@ -297,7 +299,7 @@ class GedcomTest {
 
     // ---------------------------------------------------------------- writing
 
-    private fun written(family: Family) = Gedcom.write(family, "1.0", "7 NOV 2026")
+    private fun written(family: Family) = Gedcom.write(family, TreeDetails.Empty, "1.0", "7 NOV 2026")
 
     @Test
     fun theWrittenFileHasTheRequiredPartsAndNoLineIsTooLong() {

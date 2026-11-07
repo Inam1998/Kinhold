@@ -10,6 +10,7 @@ class Family private constructor(
     private val parentIds: Map<Int, List<Int>>,
     private val childIds: Map<Int, List<Int>>,
     private val spouseIds: Map<Int, List<Int>>,
+    private val couples: Map<Pair<Int, Int>, CoupleInfo>,
 ) {
     val size: Int get() = byId.size
     val people: Collection<Person> get() = byId.values
@@ -32,6 +33,22 @@ class Family private constructor(
     fun childrenOf(id: Int): List<Person> = childIds[id].orEmpty().map(byId::getValue).sortedBy { it.born ?: Int.MAX_VALUE }
 
     fun spousesOf(id: Int): List<Person> = spouseIds[id].orEmpty().map(byId::getValue)
+
+    private fun info(a: Int, b: Int): CoupleInfo? = couples[minOf(a, b) to maxOf(a, b)]
+
+    /** Whether a divorce or annulment is recorded for this couple. */
+    fun partnershipEnded(a: Int, b: Int): Boolean = info(a, b)?.ended == true
+
+    /** Spouses who are still together: those with no divorce or annulment recorded. */
+    fun currentSpousesOf(id: Int): List<Person> = spousesOf(id).filter { !partnershipEnded(id, it.id) }
+
+    /**
+     * The spouses in the order they are placed and listed: by marriage date where one is recorded (earliest first),
+     * then the others by their own birth year, then by the order they were added.
+     */
+    fun spousesInOrder(id: Int): List<Person> = spousesOf(id).sortedWith(
+        compareBy({ info(id, it.id)?.marriedKey ?: Int.MAX_VALUE }, { it.born ?: Int.MAX_VALUE }, { it.id }),
+    )
 
     /** The person born earliest, or the first one added when no birth years are known. */
     fun oldest(): Person? = people.minByOrNull { it.born ?: Int.MAX_VALUE }
@@ -76,6 +93,7 @@ class Family private constructor(
             people: List<Person>,
             parentLinks: List<Pair<Int, Int>>,
             partnerships: List<Pair<Int, Int>>,
+            couples: Map<Pair<Int, Int>, CoupleInfo> = emptyMap(),
         ): Family {
             val byId = LinkedHashMap<Int, Person>()
             for (p in people) byId[p.id] = p
@@ -92,7 +110,7 @@ class Family private constructor(
                 spouses.getOrPut(a) { mutableListOf() } += b
                 spouses.getOrPut(b) { mutableListOf() } += a
             }
-            return Family(byId, parents, children, spouses)
+            return Family(byId, parents, children, spouses, couples)
         }
     }
 }
