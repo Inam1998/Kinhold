@@ -33,7 +33,7 @@ Revenue depends on active users and the rate advertisers pay; measure with real 
 
 ## Progress (2026-11-07, version 0.1.0)
 Built: focus-person tree view with several spouses, local storage with add/edit/delete, backup, restore and undo, GEDCOM import and export, in-app Help guide, photos with default avatars, new look, settings (theme and accent), siblings and step relatives, events (with full dates, marriages and divorces) and plain-text sources. Details and limits are in `CLAUDE.md`.
-Events and sources are built (0.1.0, see `CLAUDE.md`). Source scans or documents still come later because they make backups much larger; an "about/between" date type, event places on a map, and events shown on the tree cards are not built.
+Events and sources, permanent person ids, share files and merging are built (0.1.0, see `CLAUDE.md`; not yet run on the phone). Source scans or documents still come later because they make backups much larger; an "about/between" date type, event places on a map, and events shown on the tree cards are not built.
 After that: recorded adopted/foster/step link types and more than two parents; ads and Pro; scan-to-person; voice stories; contact import.
 
 ## Risks
@@ -42,3 +42,16 @@ After that: recorded adopted/foster/step link types and more than two parents; a
 - Many people need a tree only occasionally, so ad income depends on the daily hooks and on new users arriving.
 - Contacts, microphone and camera permissions need honest store disclosure.
 - Name and trademark are unchecked beyond Play search.
+
+## Ideas backlog (owner, 2026-11-07; not built, not yet ordered)
+1. **Address and phone on a person.** Records get a text address and one or more phone numbers. Data change: migration, backup format, GEDCOM (ADDR, PHON) and Help page.
+2. **Map pin for an address.** Keep the typed address and, separately, a saved pin (latitude and longitude). An icon opens the place in the phone's map app. Cheapest route: a `geo:` or maps link intent, which needs no API key and no internet permission in Kinhold. Pick the pin by sharing or pasting a location from the maps app.
+3. **Call, text and WhatsApp buttons** on the person card or Details page, next to the phone number. Intents only (dial, SMS compose, `wa.me` link): they open the phone's own apps, so no permission and no data leaves Kinhold. WhatsApp only if installed.
+4. **Set yourself as the central person** ("This is me") and a **Recentre on me** button (today only "Recenter" on the view and "Oldest"). Needs a stored "me" id: migration, backup and share-file handling.
+5. **Icons** on pills and actions (Find, Recenter, Backup, Help, Settings, Edit, Details and the new buttons), following the design system's icon style.
+6. **Settings and tools navigation.** The chip row will not scale. Likely a floating bottom nav as in the design system: Tree, Find, Tools (backup, import and export, share), More (settings, help). To be decided with the owner.
+7. **Map view of the tree and radius search** ("who in my tree lives or was born within 50 km of here"). Needs places turned into coordinates (a saved pin per address or event place).
+**Caveats to settle before 7 and the in-app map:**
+- Google Maps is not free or open source. Its SDK and APIs need a key with a billing account, per-use pricing above a free allowance, and Google's terms. It also needs the INTERNET permission, which today's Privacy page and "no internet permission" claim say we do not have, and it would send places in the tree to Google. Open options: OpenStreetMap data with MapLibre or osmdroid (free, but tiles still come over the internet, so also the INTERNET permission, which must change together with the Privacy page, the store listing and the Data safety form), or no in-app map at all and hand off to the phone's maps app.
+- Radius search needs coordinates, not text. Geocoding text addresses means an online service or a bundled dataset; pins saved by the user avoid that.
+- Contact numbers and addresses are sensitive. The planned share file must let the owner leave them out, and "exclude living people" should cover them.

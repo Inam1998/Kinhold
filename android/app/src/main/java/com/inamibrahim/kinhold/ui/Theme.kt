@@ -135,6 +135,9 @@ object Tones {
     val Rose get() = if (Palette.dark) Color(0xFFF472B6) else Color(0xFFBE185D)
     val Coral get() = if (Palette.dark) Color(0xFFFF9A7A) else Color(0xFFC2410C)
     val Amber get() = if (Palette.dark) Color(0xFFFBBF24) else Color(0xFF92400E)
+    val Mint get() = if (Palette.dark) Color(0xFF34D399) else Color(0xFF047857)
+    val Violet get() = if (Palette.dark) Color(0xFFA78BFA) else Color(0xFF6D28D9)
+    val Teal get() = if (Palette.dark) Color(0xFF2DD4BF) else Color(0xFF0F766E)
 }
 
 /** Inter (SIL Open Font License), bundled so the app looks the same on every phone. */
@@ -208,5 +211,8 @@ fun KinholdTheme(mode: ThemeMode = ThemeMode.Dark, content: @Composable () -> Un
     SideEffect { if (Palette.dark != dark) Palette.dark = dark }
     val accent = Palette.accent
     val scheme = remember(dark, accent) { schemeFor(accent.applyTo(if (dark) DarkColors else LightColors, dark), dark) }
-    MaterialTheme(colorScheme = scheme, typography = KinholdTypography, shapes = KinholdShapes, content = content)
+    MaterialTheme(colorScheme = scheme, typography = KinholdTypography, shapes = KinholdShapes) {
+        // Every tap shows a ripple, like the other apps: one setting here covers every button and row.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides androidx.compose.material3.ripple(), content = content)
+    }
 }

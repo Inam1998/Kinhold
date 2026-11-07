@@ -7,10 +7,17 @@ import android.database.sqlite.SQLiteDatabase
 import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.CoupleInfo
+import com.inamibrahim.kinhold.model.CustomField
 import com.inamibrahim.kinhold.model.Event
 import com.inamibrahim.kinhold.model.EventKind
 import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.GeoPin
 import com.inamibrahim.kinhold.model.Limits
+import com.inamibrahim.kinhold.model.Merge
+import com.inamibrahim.kinhold.model.MergeField
+import com.inamibrahim.kinhold.model.MergeResult
+import com.inamibrahim.kinhold.model.Share
+import com.inamibrahim.kinhold.model.ShareScope
 import com.inamibrahim.kinhold.model.PartialDate
 import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.Source
@@ -19,6 +26,7 @@ import com.inamibrahim.kinhold.model.inDateOrder
 import com.inamibrahim.kinhold.model.Gedcom
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDraft
+import com.inamibrahim.kinhold.model.PersonUid
 import com.inamibrahim.kinhold.model.Sex
 import com.inamibrahim.kinhold.model.TestFamily
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +128,12 @@ class FamilyRepository(
         Unit
     }
 
+    /** Marks [id] as the owner of this tree ("this is me"), or nobody if [id] is null. Only one person can be. */
+    suspend fun setMe(id: Int?) = changing { db ->
+        db.execSQL("UPDATE person SET is_me = 0 WHERE is_me <> 0")
+        if (id != null) db.execSQL("UPDATE person SET is_me = 1 WHERE id = ?", arrayOf(id))
+    }
+
     /** A person's events and sources and the events of each of their couples. Safe to call from any thread. */
     suspend fun details(id: Int): PersonDetails = withContext(Dispatchers.IO) {
         helper.readableDatabase.readDetails(id, _family.value.spousesOf(id).map { it.id })
@@ -150,7 +164,7 @@ class FamilyRepository(
 
     /** Puts a deleted person back with the same id, photo and links to relatives who are still in the tree. */
     suspend fun restoreDeleted(deleted: DeletedPerson) = changing { db ->
-        db.insertWithId(deleted.person.id, deleted.person.toDraft())
+        db.insertWithId(deleted.person.id, deleted.person.toDraft(), deleted.person.isMe)
         deleted.photo?.let { db.putPhoto(deleted.person.id, it) }
         for (parent in deleted.parentIds) if (db.exists(parent)) db.insertLink(child = deleted.person.id, parent = parent)
         for (child in deleted.childIds) if (db.exists(child)) db.insertLink(child = child, parent = deleted.person.id)
@@ -174,7 +188,7 @@ class FamilyRepository(
     suspend fun replaceAll(data: BackupData) = changing { db ->
         writeSafetyCopy(db, _family.value)
         db.delete("person", null, null)
-        for (p in data.people) db.insertWithId(p.id, p.toDraft())
+        for (p in data.people) db.insertWithId(p.id, p.toDraft(), p.isMe)
         for ((child, parent) in data.parentLinks) db.insertLink(child, parent)
         for ((a, b) in data.partnerships) db.insertPartnership(a, b)
         for ((id, jpeg) in data.photos) db.putPhoto(id, PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
@@ -194,11 +208,85 @@ class FamilyRepository(
     suspend fun addAll(data: BackupData) = changing { db ->
         writeSafetyCopy(db, _family.value)
         val newIds = HashMap<Int, Int>()
-        for (p in data.people) newIds[p.id] = db.insertPerson(p.toDraft())
+        // A person whose permanent id is already in this tree is a copy of someone here: the copy gets a new id.
+        val taken = db.rawQuery("SELECT uid FROM person", null).use { c -> HashSet<String>().apply { while (c.moveToNext()) c.getString(0)?.let(::add) } }
+        for (p in data.people) newIds[p.id] = db.insertPerson(p.toDraft(), if (p.uid in taken) "" else p.uid)
         for ((child, parent) in data.parentLinks) db.insertLink(newIds.getValue(child), newIds.getValue(parent))
         for ((a, b) in data.partnerships) db.insertPartnership(newIds.getValue(a), newIds.getValue(b))
         for ((id, jpeg) in data.photos) db.putPhoto(newIds.getValue(id), PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
         db.putTreeDetails(data.details) { newIds.getValue(it) }
+    }
+
+    /**
+     * A share file for the branch that starts at [rootId]: the same file format as a backup, holding only the people the
+     * [scope] reaches, their links, events, sources and (if asked) photos. Returns the file text and how many people it has.
+     */
+    suspend fun exportShare(rootId: Int, scope: ShareScope, thisYear: Int): Pair<String, Int> = lock.withLock {
+        withContext(Dispatchers.IO) {
+            val family = _family.value
+            val ids = Share.select(family, rootId, scope, thisYear)
+            val db = helper.readableDatabase
+            val photos = if (scope.withPhotos) db.readPhotos().filterKeys { it in ids } else emptyMap()
+            val text = BackupCodec.encode(
+                Share.subFamily(family, ids, scope.withContact), Instant.now().toString(), photos, Share.subDetails(db.readTreeDetails(), ids, scope.withContact),
+            )
+            text to ids.size
+        }
+    }
+
+    /** Compares [data] with the tree as it is now. Nothing is changed. */
+    suspend fun planMerge(data: BackupData): Merge = lock.withLock {
+        withContext(Dispatchers.IO) { Merge(_family.value, helper.readableDatabase.readTreeDetails(), data) }
+    }
+
+    /**
+     * Adds what [data] has and the tree lacks and applies the field choices, all in one transaction after writing the
+     * safety copy (so [undoRestore] takes it back). The comparison is made again against the tree as it is now, so the
+     * choices ([accepted], [useHis], [addEvents]) are the ones the person saw even if something changed meanwhile.
+     */
+    suspend fun applyMerge(
+        data: BackupData,
+        accepted: Set<Int>,
+        useHis: Set<Pair<Int, MergeField>>,
+        addEvents: Boolean,
+    ): MergeResult = changing { db ->
+        writeSafetyCopy(db, _family.value)
+        val result = Merge(_family.value, db.readTreeDetails(), data).resolve(accepted, useHis, addEvents)
+        val byId = data.people.associateBy { it.id }
+        val taken = db.rawQuery("SELECT uid FROM person", null).use { c -> HashSet<String>().apply { while (c.moveToNext()) c.getString(0)?.let(::add) } }
+        val newIds = HashMap<Int, Int>()
+        for (incomingId in result.newPeople) {
+            val p = byId.getValue(incomingId)
+            val uid = if (p.uid in taken) "" else p.uid
+            val id = db.insertPerson(p.toDraft(), uid)
+            taken += db.rawQuery("SELECT uid FROM person WHERE id = ?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getString(0) else "" }
+            newIds[incomingId] = id
+            data.photos[incomingId]?.let { db.putPhoto(id, PreparedPhoto(it, PhotoCodec.thumbOf(it))) }
+        }
+        fun resolve(ref: Int): Int = if (ref > 0) ref else newIds.getValue(-ref)
+        for ((id, draft) in result.updates) db.update("person", draft.toValues(), "id = ?", arrayOf(id.toString()))
+        for ((id, incomingId) in result.photoFills) data.photos[incomingId]?.let { db.putPhoto(id, PreparedPhoto(it, PhotoCodec.thumbOf(it))) }
+        for ((c, p) in result.links) db.insertLink(resolve(c), resolve(p))
+        for ((a, b) in result.partnerships) db.insertPartnership(resolve(a), resolve(b))
+        for (ref in result.personEvents.keys + result.personSources.keys + result.personFields.keys) {
+            val id = resolve(ref)
+            val existing = db.readDetails(id, emptyList())
+            db.putDetails(
+                id,
+                PersonDetails(
+                    existing.events + result.personEvents[ref].orEmpty(),
+                    existing.sources + result.personSources[ref].orEmpty(),
+                    fields = existing.fields + result.personFields[ref].orEmpty(),
+                ),
+            )
+        }
+        for ((pair, events) in result.coupleEvents) {
+            val a = resolve(pair.first)
+            val b = resolve(pair.second)
+            val existing = db.readDetails(a, listOf(b)).coupleEvents[b].orEmpty()
+            db.putCoupleEvents(a, b, existing + events)
+        }
+        result
     }
 
     /** Whether a tree from before the last restore is kept. */
@@ -257,7 +345,7 @@ class FamilyRepository(
         // The photo table is joined only for its stamp; the picture bytes are read when a card needs them.
         db.rawQuery(
             "SELECT p.id, p.given, p.surname, p.sex, p.birth_year, p.death_year, p.birth_place, p.death_place, p.notes, " +
-                "COALESCE(ph.stamp, 0), p.birth_month, p.birth_day, p.death_month, p.death_day FROM person p LEFT JOIN photo ph ON ph.person_id = p.id ORDER BY p.id",
+                "COALESCE(ph.stamp, 0), p.birth_month, p.birth_day, p.death_month, p.death_day, COALESCE(p.uid, ''), p.address, p.phone, p.geo_lat, p.geo_lng, p.is_me, p.email FROM person p LEFT JOIN photo ph ON ph.person_id = p.id ORDER BY p.id",
             null,
         ).use { c ->
             while (c.moveToNext()) {
@@ -276,6 +364,13 @@ class FamilyRepository(
                     birthDay = c.intOrNull(11),
                     deathMonth = c.intOrNull(12),
                     deathDay = c.intOrNull(13),
+                    uid = c.getString(14),
+                    address = c.getString(15),
+                    phone = c.getString(16),
+                    lat = if (c.isNull(17)) null else c.getDouble(17),
+                    lng = if (c.isNull(18)) null else c.getDouble(18),
+                    isMe = c.getInt(19) == 1,
+                    email = c.getString(20),
                 )
             }
         }
@@ -326,6 +421,11 @@ private fun PersonDraft.toValues() = ContentValues().apply {
     put("birth_place", birthPlace.trim())
     put("death_place", deathPlace.trim())
     put("notes", notes.trim())
+    put("address", address.trim().take(500))
+    put("phone", phone.trim().take(40))
+    put("email", email.trim().take(200))
+    val pin = if (lat != null && lng != null) GeoPin(lat, lng).takeIf { it.isValid } else null
+    if (pin != null) { put("geo_lat", pin.lat); put("geo_lng", pin.lng) } else { putNull("geo_lat"); putNull("geo_lng") }
     val bm = if (born != null) birthMonth else null
     val dm = if (died != null) deathMonth else null
     if (bm != null) put("birth_month", bm) else putNull("birth_month")
@@ -334,10 +434,11 @@ private fun PersonDraft.toValues() = ContentValues().apply {
     if (dm != null && deathDay != null) put("death_day", deathDay) else putNull("death_day")
 }
 
-private fun SQLiteDatabase.insertPerson(draft: PersonDraft): Int = insertOrThrow("person", null, draft.toValues()).toInt()
+private fun SQLiteDatabase.insertPerson(draft: PersonDraft, uid: String = draft.uid): Int =
+    insertOrThrow("person", null, draft.toValues().apply { put("uid", uid.ifBlank { PersonUid.create() }) }).toInt()
 
-private fun SQLiteDatabase.insertWithId(id: Int, draft: PersonDraft) {
-    insertOrThrow("person", null, draft.toValues().apply { put("id", id) })
+private fun SQLiteDatabase.insertWithId(id: Int, draft: PersonDraft, isMe: Boolean = false) {
+    insertOrThrow("person", null, draft.toValues().apply { put("id", id); put("uid", draft.uid.ifBlank { PersonUid.create() }); put("is_me", if (isMe) 1 else 0) })
 }
 
 private fun SQLiteDatabase.putPhoto(personId: Int, photo: PreparedPhoto) {
@@ -424,6 +525,8 @@ private fun SQLiteDatabase.insertSource(personId: Int?, eventId: Long?, source: 
 private fun SQLiteDatabase.putDetails(personId: Int, details: PersonDetails) {
     delete("event", "person_id = ?", arrayOf(personId.toString()))
     delete("source", "person_id = ?", arrayOf(personId.toString()))
+    delete("person_field", "person_id = ?", arrayOf(personId.toString()))
+    for (fld in details.fields.map { it.clamped() }.filter { !it.isBlank }.take(Limits.FIELDS)) insertField(personId, fld)
     for (e in details.events.inDateOrder()) insertEvent(personId, null, null, e)
     for (s in details.sources.map { it.clamped() }.filter { !it.isBlank }.take(Limits.SOURCES)) insertSource(personId, null, s)
     for ((partner, events) in details.coupleEvents) putCoupleEvents(personId, partner, events)
@@ -442,6 +545,9 @@ private fun SQLiteDatabase.putCoupleEvents(x: Int, y: Int, events: List<Event>) 
 /** Stores a whole tree's events and sources; [map] turns the ids in [details] into the ids the people now have. */
 private fun SQLiteDatabase.putTreeDetails(details: TreeDetails, map: (Int) -> Int) {
     for ((person, events) in details.events) for (e in events.inDateOrder()) insertEvent(map(person), null, null, e)
+    for ((person, list) in details.fields) {
+        for (fld in list.map { it.clamped() }.filter { !it.isBlank }.take(Limits.FIELDS)) insertField(map(person), fld)
+    }
     for ((person, sources) in details.sources) {
         for (s in sources.map { it.clamped() }.filter { !it.isBlank }.take(Limits.SOURCES)) insertSource(map(person), null, s)
     }
@@ -495,7 +601,7 @@ private fun SQLiteDatabase.readDetails(personId: Int, partnerIds: List<Int>): Pe
         }
         if (list.isNotEmpty()) couples[partner] = list
     }
-    return PersonDetails(events, general, couples)
+    return PersonDetails(events, general, couples, readFields(personId))
 }
 
 /** Every event and source in the tree, for a backup or a GEDCOM file. */
@@ -514,5 +620,28 @@ private fun SQLiteDatabase.readTreeDetails(): TreeDetails {
     rawQuery("SELECT person_id, title, citation, note FROM source WHERE person_id IS NOT NULL ORDER BY id", null).use {
         while (it.moveToNext()) general.getOrPut(it.getInt(0)) { mutableListOf() } += Source(it.getString(1), it.getString(2), it.getString(3))
     }
-    return TreeDetails(events, general, couples)
+    return TreeDetails(events, general, couples, readAllFields())
+}
+
+private fun SQLiteDatabase.insertField(personId: Int, field: CustomField) {
+    insertOrThrow(
+        "person_field", null,
+        ContentValues().apply { put("person_id", personId); put("label", field.label); put("value", field.value) },
+    )
+}
+
+private fun SQLiteDatabase.readFields(personId: Int): List<CustomField> {
+    val out = ArrayList<CustomField>()
+    rawQuery("SELECT label, value FROM person_field WHERE person_id = ? ORDER BY id", arrayOf(personId.toString())).use {
+        while (it.moveToNext()) out += CustomField(it.getString(0), it.getString(1))
+    }
+    return out
+}
+
+private fun SQLiteDatabase.readAllFields(): Map<Int, List<CustomField>> {
+    val out = LinkedHashMap<Int, MutableList<CustomField>>()
+    rawQuery("SELECT person_id, label, value FROM person_field ORDER BY id", null).use {
+        while (it.moveToNext()) out.getOrPut(it.getInt(0)) { mutableListOf() } += CustomField(it.getString(1), it.getString(2))
+    }
+    return out
 }

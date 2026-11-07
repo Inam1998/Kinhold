@@ -181,6 +181,9 @@ object Limits {
     const val SOURCE_TITLE = 300
     const val SOURCE_CITATION = 1000
     const val TEXT = 5000
+    const val FIELDS = 30
+    const val FIELD_LABEL = 60
+    const val FIELD_VALUE = 500
 }
 
 /** Events in time order (undated last), keeping the typed order between equal dates, and cut to [Limits.EVENTS]. */
@@ -194,8 +197,9 @@ data class PersonDetails(
     val events: List<Event> = emptyList(),
     val sources: List<Source> = emptyList(),
     val coupleEvents: Map<Int, List<Event>> = emptyMap(),
+    val fields: List<CustomField> = emptyList(),
 ) {
-    val isEmpty: Boolean get() = events.isEmpty() && sources.isEmpty() && coupleEvents.values.all { it.isEmpty() }
+    val isEmpty: Boolean get() = events.isEmpty() && sources.isEmpty() && fields.isEmpty() && coupleEvents.values.all { it.isEmpty() }
 
     companion object {
         val Empty = PersonDetails()
@@ -209,6 +213,7 @@ class TreeDetails(
     val events: Map<Int, List<Event>> = emptyMap(),
     val sources: Map<Int, List<Source>> = emptyMap(),
     val couples: Map<Pair<Int, Int>, List<Event>> = emptyMap(),
+    val fields: Map<Int, List<CustomField>> = emptyMap(),
 ) {
     companion object {
         val Empty = TreeDetails()
@@ -222,3 +227,10 @@ class CoupleInfo(
     /** True once a divorce or annulment is recorded. */
     val ended: Boolean,
 )
+
+/** A fact the owner defines for one person, such as "Blood group: O+" or "Nickname: Bhai". */
+data class CustomField(val label: String = "", val value: String = "") {
+    val isBlank: Boolean get() = label.isBlank() && value.isBlank()
+
+    fun clamped() = CustomField(label.trim().take(Limits.FIELD_LABEL), value.trim().take(Limits.FIELD_VALUE))
+}

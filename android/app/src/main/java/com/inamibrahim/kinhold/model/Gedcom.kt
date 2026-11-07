@@ -78,11 +78,13 @@ object Gedcom {
         if (people.size > MAX_PEOPLE) throw GedcomException("This GEDCOM file has too many people to open.")
 
         val notes = roots.filter { (it.tag == "NOTE" || it.tag == "SNOTE") && it.xref != null }.associate { it.xref!! to it.value }
+        val seenUids = HashSet<String>()
         val sourceRecords = roots.filter { it.tag == "SOUR" && it.xref != null }.associateBy { it.xref!! }
         val ids = HashMap<String, Int>()
         val persons = ArrayList<Person>(people.size)
         val personEvents = LinkedHashMap<Int, List<Event>>()
         val personSources = LinkedHashMap<Int, List<Source>>()
+        val personFields = LinkedHashMap<Int, List<CustomField>>()
         val coupleEvents = LinkedHashMap<Pair<Int, Int>, MutableList<Event>>()
         var reduced = 0
         var eventsDropped = 0
@@ -176,6 +178,7 @@ object Gedcom {
             val birth = node.child("BIRT")
             val death = node.child("DEAT")
             val birthDate = dateOf(birth)
+            val pin = node.child("_PIN")?.value?.let { GeoPin.parse(it) }
             val deathDate = dateOf(death)
             val noteText = notesOf(node).joinToString("\n\n")
             persons += Person(
@@ -196,6 +199,12 @@ object Gedcom {
                 birthDay = birthDate.day,
                 deathMonth = deathDate.month,
                 deathDay = deathDate.day,
+                uid = (node.child("_UID") ?: node.child("UID"))?.value?.trim()?.lowercase()?.takeIf { PersonUid.isValid(it) && seenUids.add(it) }.orEmpty(),
+                address = addressOf(node.child("ADDR")),
+                phone = node.child("PHON")?.value?.trim().orEmpty().take(40),
+                email = node.child("EMAIL")?.value?.trim().orEmpty().take(200),
+                lat = pin?.lat,
+                lng = pin?.lng,
             )
             val events = ArrayList<Event>()
             for (detail in node.children) {
@@ -211,6 +220,8 @@ object Gedcom {
                 }
             }
             if (events.isNotEmpty()) personEvents[id] = events
+            val customFields = node.all("_FIELD").map { CustomField(it.child("TYPE")?.value.orEmpty(), it.value).clamped() }.filter { !it.isBlank }.take(Limits.FIELDS)
+            if (customFields.isNotEmpty()) personFields[id] = customFields
             eventsKept += events.size
             // Citations for the person in general, and for the birth and the death (which are fields, not events).
             val cited = sourcesOf(node) + (birth?.let { sourcesOf(it, "About the birth. ") } ?: emptyList()) +
@@ -275,7 +286,7 @@ object Gedcom {
         val report = GedcomReport(
             persons.size, families.size, reduced, eventsDropped, sourcesDropped, media, other, skipped, eventsKept, sourcesKept,
         )
-        val details = TreeDetails(personEvents, personSources, coupleEvents)
+        val details = TreeDetails(personEvents, personSources, coupleEvents, personFields)
         return GedcomResult(BackupData(persons, links.toList(), partnerships.toList(), details = details), report)
     }
 
@@ -313,7 +324,7 @@ object Gedcom {
     private val REFERENCE = Regex("""@[^@\s]+@""")
     private val LINE = Regex("""^(\d+)\s+(?:(@[^@\s]+@)\s+)?([A-Za-z0-9_]+)(?:\s(.*))?$""")
 
-    private val KEPT_PERSON_TAGS = setOf("NAME", "SEX", "BIRT", "DEAT", "NOTE", "SNOTE", "FAMC", "FAMS")
+    private val KEPT_PERSON_TAGS = setOf("NAME", "SEX", "BIRT", "DEAT", "NOTE", "SNOTE", "FAMC", "FAMS", "ADDR", "PHON", "EMAIL", "_FIELD", "_PIN", "UID", "_UID")
     private val KEPT_FAMILY_TAGS = setOf("HUSB", "WIFE", "CHIL", "NOTE", "SNOTE")
     private val HOUSEKEEPING_TAGS = setOf("CHAN", "RIN", "REFN", "RFN", "AFN", "UID", "SUBM", "ALIA", "ASSO", "ANCI", "DESI", "SOURCE", "TYPE", "RESN", "CREA", "NO")
     /** General events that have a tag of their own but no kind in Kinhold; they are kept as events named by the label. */
@@ -328,7 +339,7 @@ object Gedcom {
     /** Event and fact lines with no place in Kinhold: ordinances, identity numbers, contact details and the like. */
     private val UNSUPPORTED_EVENT_TAGS = setOf(
         "DIVF", "MARB", "MARC", "MARL", "MARS", "CHRA", "DSCR", "CAST", "NCHI", "NMR", "SSN", "IDNO",
-        "BAPL", "CONL", "ENDL", "SLGC", "SLGS", "ADDR", "PHON", "EMAIL", "WWW", "FAX",
+        "BAPL", "CONL", "ENDL", "SLGC", "SLGS", "WWW", "FAX",
     )
 
     /** One line of a GEDCOM file with the lines indented under it. */
@@ -384,6 +395,14 @@ object Gedcom {
         name.child("GIVN")?.value?.takeIf { it.isNotBlank() }?.let { given = it }
         name.child("SURN")?.value?.takeIf { it.isNotBlank() }?.let { surname = it }
         return tidy(given) to tidy(surname)
+    }
+
+    /** An ADDR line: its own text, or if it has none the structured parts (ADR1, CITY, STAE, POST, CTRY) joined. */
+    private fun addressOf(addr: Node?): String {
+        if (addr == null) return ""
+        val own = addr.value.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val parts = if (own.isNotEmpty()) own else listOf("ADR1", "ADR2", "ADR3", "CITY", "STAE", "POST", "CTRY").mapNotNull { addr.child(it)?.value?.trim()?.takeIf { v -> v.isNotEmpty() } }
+        return parts.joinToString(", ").take(500)
     }
 
     private fun tidy(s: String) = s.replace('/', ' ').trim().replace(Regex("""\s+"""), " ")
@@ -527,6 +546,15 @@ object Gedcom {
             put(1, "NAME", "${given.replace("@", "@@")} /${surname.replace("@", "@@")}/")
             if (given.isNotEmpty()) put(2, "GIVN", given.replace("@", "@@"))
             if (surname.isNotEmpty()) put(2, "SURN", surname.replace("@", "@@"))
+            if (p.uid.isNotEmpty()) put(1, "_UID", p.uid)
+            if (p.address.isNotBlank()) text(1, "ADDR", p.address.trim())
+            if (p.phone.isNotBlank()) text(1, "PHON", p.phone.trim())
+            if (p.email.isNotBlank()) text(1, "EMAIL", p.email.trim())
+            for (fld in details.fields[p.id].orEmpty()) {
+                text(1, "_FIELD", fld.value)
+                if (fld.label.isNotBlank()) text(2, "TYPE", fld.label)
+            }
+            if (p.lat != null && p.lng != null) put(1, "_PIN", GeoPin(p.lat, p.lng).text())
             when (p.sex) {
                 Sex.Male -> put(1, "SEX", "M")
                 Sex.Female -> put(1, "SEX", "F")

@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { GettingStarted, Navigating, People, Events, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -44,7 +44,7 @@ object HelpGuide {
                 HelpSection("Tap a card", "Tapping anyone makes them the focus, so you can walk the tree one person at a time."),
                 HelpSection("Drag and pinch", "Drag to move around and pinch to zoom. A quick flick keeps gliding for a moment."),
                 HelpSection("More relatives", "A green +3 under a card means three children are not drawn. A small arrow above a card means more ancestors exist. Tap that card to bring them into view."),
-                HelpSection("The buttons at the top", "Find searches by name. Recenter frames the focus person again. Oldest jumps to the person with the earliest birth year."),
+                HelpSection("The bar at the bottom", "Me brings the tree back to you (see \"Adding and editing people\" for how to say who you are). Find searches by name and can jump to the oldest person. More holds Backup and sharing (saving, restoring, merging and importing), Settings and this Help guide. The round arrow button over the tree frames the focus person again."),
             ),
             limits = listOf(
                 "The view shows three generations above the focus person and two below.",
@@ -59,12 +59,21 @@ object HelpGuide {
                 HelpSection("What you can fill in", "First names, surname, sex, the date of birth and of death (a year is enough, the day and month are optional), the place of each, and notes. Only a name is required. Baptisms, jobs, moves, marriages and the like go in events, see \"Events, marriages and sources\"."),
                 HelpSection("Dates", "Leave any part empty if you do not know it. A month needs a year and a day needs a month, and 30 February is refused. The death date cannot be before the birth date."),
                 HelpSection("Changing someone", "Choose Edit on the card at the bottom of the tree."),
+                HelpSection("Phone, email, address and map pin", "In Edit you can add a phone number, an email address, an address and a map pin. On the Details page, Call, Text, WhatsApp, Email and Map open your phone's own apps, and Map shows the pin (or searches the address) in your maps app. To save a pin, press and hold the place in Google Maps, copy the numbers shown and paste them in the Map pin box."),
+                HelpSection("Your own facts", "Under Your own facts in Edit, add as many label and value pairs as you like, such as Blood group, Nickname or Village. They show on the Details page."),
+                HelpSection("Dates and age", "Tap a date box to open the date picker: type or step the year, then touch a month and a day. A living person's age shows on their card and Details page, worked out from their birth date."),
+                HelpSection("Who you are", "Open More, then Settings, then Who are you, and choose your own card. The tree then marks you with a YOU badge, opens on you, and the Me button at the bottom brings the tree back to you from anywhere."),
                 HelpSection("Starting values", "A new child starts with their father's surname and a new spouse with the opposite sex. You can change both."),
                 HelpSection("Several marriages", "Choose + Spouse again to add more spouses. The person is drawn in the middle with their spouses on both sides, and each couple's children hang from their own line. When you add a child to someone with several spouses, you are asked who the other parent is."),
             ),
             limits = listOf(
                 "Different people can share a name. Find shows whose child each one is.",
                 "Spouses are placed by marriage date where you have recorded one, then by birth year, then by the order they were added.",
+                "Kinhold asks for no permission to call or message: it only hands the number to your phone's apps. WhatsApp needs the number with its country code, such as +92, and only works if WhatsApp is installed.",
+                "A pin is two numbers saved by you. Kinhold does not look addresses up, show a map inside the app or work out distances, and short Google links (maps.app.goo.gl) cannot be read: open them first and copy the numbers.",
+                "Only one phone number, one email address and one address per person for now.",
+                "Age is an estimate when only the birth year is known, and is shown only when the person may be alive (no death date, born in the last 110 years) or when both years are known.",
+                "The date picker works in the Gregorian calendar only.",
                 "Only the focus person's own spouses are drawn. To see the spouse's other marriages or family, tap that spouse.",
             ),
         ),
@@ -73,7 +82,7 @@ object HelpGuide {
             title = "Events, marriages and sources",
             summary = "What happened in a life, and where you learned it.",
             sections = listOf(
-                HelpSection("Adding an event", "Choose Edit on a person, then + Add an event under Events. Pick what happened (baptism, burial, job, move, military service, or Other with your own name), then a date, place and notes. Every part of the date is optional."),
+                HelpSection("Adding an event", "Choose Edit on a person, then + Add an event under Events. Tap What happened to pick from the list (baptism, burial, job, move, military service, or Other with your own name), then set a date with the date picker, a place and notes. Every part of the date is optional."),
                 HelpSection("Marriage and divorce", "Under each spouse's name in Edit is a place for events of that couple. Add a marriage with its date and place, and a divorce or annulment if there was one. Marriage dates put spouses in order in the tree, and a divorce stops a former partner being shown as a step-parent."),
                 HelpSection("Sources", "A source is a note of where something came from: a book, a certificate, a website, with the page or entry. Add them to an event, or to the person in general, at the bottom of the Edit screen."),
                 HelpSection("Seeing it all", "Choose Details on the card under the tree to see dates, events, marriages and sources of the focus person on one page."),
@@ -86,6 +95,28 @@ object HelpGuide {
                 "Events are shown on the Details page and in Edit, not on the tree cards. Birth and death stay as the fields on the form, and appear on the Details page beside the events.",
                 "Events are ordered by date; events with no date come last.",
                 "Only marriage, divorce and annulment change how the tree looks. A partner who died is not treated as an ended marriage.",
+            ),
+        ),
+        HelpPage(
+            topic = HelpTopic.Sharing,
+            title = "Sharing with relatives",
+            summary = "Send part of your tree to a relative, or merge theirs into yours.",
+            sections = listOf(
+                HelpSection("Sending a branch", "Open Details on a person, then choose Share branch. Pick which relatives (ancestors, descendants or both), how many generations, and whether to include spouses and photos. Save the file and send it to your relative by any app, such as WhatsApp or email."),
+                HelpSection("Merging a file you received", "Open Backup, then Choose a file to merge. Kinhold compares it with your tree and shows you what it found before anything changes. Nothing in your own tree is replaced unless you choose it."),
+                HelpSection("Is this the same person?", "People who travelled from one Kinhold to another are matched for sure. Others are suggested by name, birth year and relatives in common. A strong suggestion starts as the same person, a weaker one as a different person, and you can change either."),
+                HelpSection("Fields that differ", "For people in both trees you see each field that differs. Where yours is empty or less exact it starts as use theirs, and where the two disagree it starts as keep mine. Choose for each field, or fill all your empty fields at once."),
+                HelpSection("Undo", "A copy of your tree is kept first. Choose Undo this merge, or later Undo the last restore or import in Backup."),
+            ),
+            limits = listOf(
+                "Share files, like backups, are not encrypted. Send them only to people you trust.",
+                "Phone numbers, email addresses, addresses, map pins and your own custom facts are left out of a share file unless you switch on Contact details and own facts. The tree owner mark (This is me) is never sent.",
+                "Leaving out people who may be alive is a guess: it leaves out anyone with no death date born in the last 110 years, and keeps people with no dates at all.",
+                "Two people with the same name and no birth year or relatives in common are only offered as a possible match, never merged without your answer.",
+                "A person can have at most two parents. If the file gives a person a third parent, that link is skipped and you are told how many.",
+                "Matching is done again each time you merge. If you confirm a match by hand, merging an updated file later may ask you again.",
+                "Merging adds and fills in. It does not delete anyone, and it does not remove events you have that the file lacks.",
+                "Your choices on the review screen are not kept if you turn the phone while reviewing.",
             ),
         ),
         HelpPage(
@@ -174,7 +205,7 @@ object HelpGuide {
             ),
             limits = listOf(
                 "Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates such as \"about 1850\" or \"between 1800 and 1810\" keep only their first date.",
-                "Not kept: photos and other files, identity numbers, church ordinances, contact details, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
+                "Not kept: photos and other files, identity numbers, church ordinances, email and web addresses, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
                 "Citations for a birth or a death become sources of the person, with a note saying which.",
                 "Add does not match people who are already in your tree, so adding the same file twice makes duplicates.",
                 "Very old files that use the ANSEL character set can show wrong accents.",

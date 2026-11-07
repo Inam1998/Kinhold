@@ -2,7 +2,16 @@ package com.inamibrahim.kinhold.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +41,7 @@ import java.time.LocalDate
 
 /** Save the whole tree to one file, restore from one, and undo the last restore. */
 @Composable
-fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
+fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onMerge: () -> Unit) {
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var pending by remember { mutableStateOf<BackupData?>(null) }
 
@@ -58,6 +67,18 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
         }
     }
 
+    val mergeOpener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            message = null
+            vm.startMerge(uri) { result ->
+                result.fold(
+                    { onMerge() },
+                    { message = (it.message ?: "That file could not be read.") to true },
+                )
+            }
+        }
+    }
+
     val gedcomSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) {
             vm.exportGedcom(uri) { result ->
@@ -75,7 +96,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = 20.dp),
         ) {
             ScreenHeader("Kinhold", "Backup and restore", Modifier.padding(top = 12.dp, bottom = 20.dp))
@@ -93,7 +114,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
 
             AppCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(24.dp)) {
-                    Text("Save a backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Lock, Tones.Mint, 40.dp); Text("Save a backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
                         "Puts your whole tree, ${plural(peopleCount)}, in one file. Save it somewhere safe such as Google Drive, " +
                             "an email to yourself or your computer, so you can get your tree back on this phone or a new one.",
@@ -124,7 +145,27 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
 
             AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
-                    Text("Restore from a backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Add, Tones.Sky, 40.dp); Text("Merge a shared file", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text(
+                        "Got a file from a relative (made with Share branch on a person)? Merging adds the people you do not have, " +
+                            "skips the ones you do, and asks you about anything that differs. Nothing is replaced unless you choose it, " +
+                            "and you can undo. A backup or GEDCOM file can be merged the same way.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                    )
+                    Pill(
+                        "Choose a file to merge",
+                        selected = false,
+                        onClick = { mergeOpener.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        )
+                }
+            }
+
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Refresh, Tones.Amber, 40.dp); Text("Restore from a backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
                         "Replaces the tree on this phone with the one in a backup file. The file is checked first, and a copy " +
                             "of your current tree is kept so you can undo.",
@@ -143,7 +184,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
 
             AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
-                    Text("Share with other programs", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Send, Tones.Violet, 40.dp); Text("Share with other programs", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
                         "GEDCOM is the standard file for family trees. Use it to bring a tree here from Ancestry, MyHeritage, " +
                             "FamilySearch or another program, or to take yours there.",
@@ -171,7 +212,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
             if (vm.hasSafetyCopy) {
                 AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.padding(24.dp)) {
-                        Text("Undo the last restore or import", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.AutoMirrored.Filled.ArrowBack, Tones.Coral, 40.dp); Text("Undo the last restore or import", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                         Text(
                             "Brings back the tree you had just before the last restore or import. The tree on this phone now becomes the saved copy.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -216,13 +257,11 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
                 )
             },
             confirmButton = {
-                Text(
-                    "Replace",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.Accent,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DialogButton("Cancel", { pending = null }, kind = ButtonKind.Neutral)
+                    DialogButton(
+                        "Replace",
+                        {
                             pending = null
                             vm.restore(data) { result ->
                                 message = result.fold(
@@ -230,20 +269,10 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, onBack: () -> Unit) {
                                     { (it.message ?: "The backup could not be restored.") to true },
                                 )
                             }
-                        }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-            },
-            dismissButton = {
-                Text(
-                    "Cancel",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.Text,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable { pending = null }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
+                        },
+                        kind = ButtonKind.Danger,
+                    )
+                }
             },
         )
     }

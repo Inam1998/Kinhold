@@ -28,7 +28,7 @@ class BackupException(message: String) : Exception(message)
  */
 object BackupCodec {
     const val FORMAT = "kinhold-backup"
-    const val VERSION = 3
+    const val VERSION = 6
     private const val MAX_PEOPLE = 200_000
     private const val MAX_PHOTO_BYTES = 3_000_000
     private const val NOT_A_BACKUP = "This file is not a Kinhold backup."
@@ -53,6 +53,13 @@ object BackupCodec {
                 .put("birthPlace", p.birthPlace)
                 .put("deathPlace", p.deathPlace)
                 .put("notes", p.notes)
+            if (p.uid.isNotEmpty()) o.put("uid", p.uid)
+            if (p.address.isNotEmpty()) o.put("address", p.address)
+            if (p.phone.isNotEmpty()) o.put("phone", p.phone)
+            if (p.email.isNotEmpty()) o.put("email", p.email)
+            details.fields[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("fields", EventJson.fields(it)) }
+            if (p.lat != null && p.lng != null) o.put("lat", p.lat).put("lng", p.lng)
+            if (p.isMe) o.put("me", true)
             p.birthMonth?.let { o.put("birthMonth", it) }
             p.birthDay?.let { o.put("birthDay", it) }
             p.deathMonth?.let { o.put("deathMonth", it) }
@@ -98,15 +105,26 @@ object BackupCodec {
             if (array.length() > MAX_PEOPLE) throw BackupException(DAMAGED)
             val people = ArrayList<Person>(array.length())
             val ids = HashSet<Int>()
+            val uids = HashSet<String>()
+            var meCount = 0
             val photos = HashMap<Int, ByteArray>()
             val personEvents = LinkedHashMap<Int, List<Event>>()
             val personSources = LinkedHashMap<Int, List<Source>>()
+            val personFields = LinkedHashMap<Int, List<CustomField>>()
             for (i in 0 until array.length()) {
                 val o = array.getJSONObject(i)
                 val id = o.getInt("id")
                 if (!ids.add(id)) throw BackupException(DAMAGED)
                 val born = year(o, "born")
                 val died = year(o, "died")
+                val uid = o.optString("uid", "")
+                // Files from before version 4 have none (the person gets one when stored); a bad or repeated one is damage.
+                if (uid.isNotEmpty() && (!PersonUid.isValid(uid) || !uids.add(uid))) throw BackupException(DAMAGED)
+                val lat = if (o.has("lat") && !o.isNull("lat")) o.getDouble("lat") else null
+                val lng = if (o.has("lng") && !o.isNull("lng")) o.getDouble("lng") else null
+                if ((lat == null) != (lng == null) || (lat != null && !GeoPin(lat, lng!!).isValid)) throw BackupException(DAMAGED)
+                val isMe = o.optBoolean("me", false)
+                if (isMe && meCount++ > 0) throw BackupException(DAMAGED)
                 val birthMonth = small(o, "birthMonth")
                 val birthDay = small(o, "birthDay")
                 val deathMonth = small(o, "deathMonth")
@@ -116,6 +134,7 @@ object BackupCodec {
                 }
                 if (o.has("events") && !o.isNull("events")) personEvents[id] = EventJson.readEvents(o.getJSONArray("events"))
                 if (o.has("sources") && !o.isNull("sources")) personSources[id] = EventJson.readSources(o.getJSONArray("sources"))
+                if (o.has("fields") && !o.isNull("fields")) personFields[id] = EventJson.readFields(o.getJSONArray("fields"))
                 if (!o.isNull("photo")) photos[id] = photo(o.getString("photo"))
                 people += Person(
                     id = id,
@@ -131,6 +150,13 @@ object BackupCodec {
                     birthDay = birthDay,
                     deathMonth = deathMonth,
                     deathDay = deathDay,
+                    uid = uid,
+                    address = o.optString("address", "").take(500),
+                    phone = o.optString("phone", "").take(40),
+                    email = o.optString("email", "").take(200),
+                    lat = lat,
+                    lng = lng,
+                    isMe = isMe,
                 )
             }
             val links = readPairs(root.optJSONArray("parentLinks"), ids).distinct()
@@ -151,7 +177,7 @@ object BackupCodec {
             }
             return BackupData(
                 people, links, partnerships, root.optString("created", ""), photos,
-                TreeDetails(personEvents, personSources, coupleEvents),
+                TreeDetails(personEvents, personSources, coupleEvents, personFields),
             )
         } catch (e: JSONException) {
             throw BackupException(DAMAGED)
@@ -229,6 +255,23 @@ object EventJson {
         for (s in list) put(JSONObject().put("title", s.title).put("citation", s.citation).put("note", s.note))
     }
 
+    fun fields(list: List<CustomField>): JSONArray = JSONArray().apply {
+        for (f in list) put(JSONObject().put("label", f.label).put("value", f.value))
+    }
+
+    /** Custom fields from a list; blank ones are kept while [editing] a form. More than [Limits.FIELDS] means a damaged file. */
+    fun readFields(array: JSONArray, editing: Boolean = false): List<CustomField> {
+        if (array.length() > Limits.FIELDS) throw BackupException(DAMAGED)
+        val out = ArrayList<CustomField>(array.length())
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            val raw = CustomField(o.optString("label", ""), o.optString("value", ""))
+            val f = if (editing) raw else raw.clamped()
+            if (editing || !f.isBlank) out += f
+        }
+        return out
+    }
+
     fun events(list: List<Event>): JSONArray = JSONArray().apply {
         for (e in list) {
             val o = JSONObject().put("kind", e.kind.key).put("detail", e.detail).put("place", e.place).put("note", e.note)
@@ -279,6 +322,7 @@ object EventJson {
     fun encodeDetails(d: PersonDetails): String = JSONObject()
         .put("events", events(d.events))
         .put("sources", sources(d.sources))
+        .put("fields", fields(d.fields))
         .put(
             "couples",
             JSONArray().apply {
@@ -300,7 +344,8 @@ object EventJson {
         PersonDetails(
             o.optJSONArray("events")?.let(::readEvents).orEmpty(),
             o.optJSONArray("sources")?.let { readSources(it, editing) }.orEmpty(),
-            couples,
+            coupleEvents = couples,
+            fields = o.optJSONArray("fields")?.let { readFields(it, editing) }.orEmpty(),
         )
     } catch (e: JSONException) {
         PersonDetails.Empty

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.inamibrahim.kinhold.ui
 
 import androidx.compose.foundation.background
@@ -24,6 +26,30 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
+import com.inamibrahim.kinhold.model.ageText
 import com.inamibrahim.kinhold.model.describeAge
 import com.inamibrahim.kinhold.model.relativesOf
 import com.inamibrahim.kinhold.tree.layoutFocus
@@ -62,21 +89,29 @@ fun TreeScreen(
     onAdd: (Relation) -> Unit,
     onAddChild: (Int) -> Unit,
     onEdit: (Int) -> Unit,
+    onMe: () -> Unit,
     onDetails: (Int) -> Unit,
     lastBackup: Long?,
-    onHelp: () -> Unit,
-    onBackup: () -> Unit,
-    onSettings: () -> Unit,
+    onMore: () -> Unit,
+    state: TreeViewState,
     undoText: String?,
     onUndo: () -> Unit,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
+    // Back closes the search first, and only then leaves the tree.
+    androidx.activity.compose.BackHandler(enabled = searching) { searching = false }
     val layout = remember(family, focusId) { layoutFocus(family, focusId) }
-    val state = remember { TreeViewState() }
+
     val focus = family.person(focusId)
 
     // Frame the view around the focused person, and again once the canvas has a size.
-    LaunchedEffect(layout, state.size) { state.show(layout) }
+    LaunchedEffect(layout, state.size) {
+        state.adopt(layout)
+        if (state.size.width > 0 && state.framedFocus != layout.focusId) {
+            state.show(layout)
+            state.framedFocus = layout.focusId
+        }
+    }
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
@@ -94,22 +129,16 @@ fun TreeScreen(
                 color = Palette.TextMuted,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
             )
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Pill("Find", selected = searching, onClick = { searching = !searching })
-                Pill("Recenter", selected = false, onClick = { state.show(layout) })
-                Pill("Oldest", selected = false, onClick = { family.oldest()?.let { onFocus(it.id) } })
-                Pill("Backup", selected = false, onClick = onBackup)
-                Pill("Help", selected = false, onClick = onHelp)
-                Pill("Settings", selected = false, onClick = onSettings)
-            }
             Box(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
                 TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
+                if (!searching) {
+                    Pill("Recenter", false, { state.show(layout) }, Modifier.align(Alignment.TopEnd).padding(end = 20.dp, top = 4.dp).shadow(4.dp, RoundedCornerShape(50)), icon = Icons.Filled.Refresh)
+                }
                 if (searching) {
                     SearchPanel(
                         family = family,
+                        onOldest = { family.oldest()?.let { onFocus(it.id) }; searching = false },
+                        onClose = { searching = false },
                         onPick = {
                             onFocus(it.id)
                             searching = false
@@ -126,15 +155,7 @@ fun TreeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(undoText, style = MaterialTheme.typography.bodyLarge, color = Palette.Text, modifier = Modifier.weight(1f))
-                        Text(
-                            "Undo",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Palette.Accent,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable(onClick = onUndo)
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
-                        )
+                        DialogButton("Undo", onUndo, Modifier.padding(vertical = 8.dp), kind = ButtonKind.Tonal)
                     }
                 }
             }
@@ -149,11 +170,18 @@ fun TreeScreen(
                     onDetails = { onDetails(focus.id) },
                     onFocus = onFocus,
                     modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp)
                         .fillMaxWidth(),
                 )
             }
+            FloatingNav(
+                listOf(
+                    NavItem("Me", Icons.Filled.Person, false) { onMe(); state.show(layout) },
+                    NavItem("Find", Icons.Filled.Search, searching) { searching = !searching },
+                    NavItem("More", Icons.Filled.Menu, false, onMore),
+                ),
+                Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
+            )
         }
     }
 }
@@ -178,7 +206,14 @@ private fun FocusCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Avatar(person, 64.dp, ring = 3.dp)
                 Column(Modifier.padding(start = 16.dp)) {
-                    Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        if (person.isMe) {
+                            Text("YOU", style = MaterialTheme.typography.labelMedium, color = Palette.OnAccent, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50)).background(Palette.Accent).padding(horizontal = 8.dp, vertical = 2.dp))
+                        }
+                    }
+                    val age = person.ageText(java.time.LocalDate.now())
+                    if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber, modifier = Modifier.padding(top = 2.dp))
                     if (person.lifeDates().isNotEmpty()) {
                         Text(
                             person.lifeDates(),
@@ -196,13 +231,15 @@ private fun FocusCard(
                 }
             }
             // Siblings, half-siblings and step relatives, worked out from the links. Tapping one moves the focus to them.
+            // At most four are shown here (the rest are on the Details page), wrapping instead of scrolling sideways.
             val relatives = remember(family, person.id) { family.relativesOf(person.id) }
             if (relatives.isNotEmpty()) {
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(top = 14.dp),
+                FlowRow(
+                    Modifier.padding(top = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for (r in relatives) {
+                    for (r in relatives.take(4)) {
                         Column(
                             Modifier
                                 .clip(RoundedCornerShape(16.dp))
@@ -214,18 +251,28 @@ private fun FocusCard(
                             Text(r.person.name, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, maxLines = 1)
                         }
                     }
+                    if (relatives.size > 4) {
+                        Column(
+                            Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Palette.SurfaceHigh)
+                                .clickable(onClick = onDetails)
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) {
+                            Text("${relatives.size - 4} more", style = MaterialTheme.typography.labelMedium, color = Palette.Accent)
+                            Text("See all", style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+                        }
+                    }
                 }
             }
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Pill("Details", selected = false, onClick = onDetails)
-                Pill("Edit", selected = false, onClick = onEdit)
+            // Every action fits on one row: icons over labels, equal widths, nothing hidden off the edge.
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky)
+                ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
                 // A person has at most two parents, but can have any number of spouses.
-                if (parents < 2) Pill("+ Parent", selected = false, onClick = { onAdd(Relation.ParentOf(person.id)) })
-                Pill("+ Spouse", selected = false, onClick = { onAdd(Relation.SpouseOf(person.id)) })
-                Pill("+ Child", selected = false, onClick = onAddChild)
+                if (parents < 2) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet)
+                ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose)
+                ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint)
             }
         }
     }
@@ -235,7 +282,7 @@ private fun plural(n: Int, one: String, many: String = one + "s"): String = "$n 
 
 /** A filled pill to type a name in, with the matches listed under it. */
 @Composable
-private fun SearchPanel(family: Family, onPick: (Person) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchPanel(family: Family, onPick: (Person) -> Unit, onOldest: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     val results = remember(family, query) { family.search(query) }
     val focus = remember { FocusRequester() }
@@ -265,6 +312,10 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, modifier: Modi
                     }
                 },
             )
+            Row(Modifier.padding(top = 10.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                if (query.isBlank()) Pill("Oldest person", false, onOldest, icon = Icons.Filled.Home) else androidx.compose.foundation.layout.Spacer(Modifier)
+                DialogButton("Close", onClose, kind = ButtonKind.Neutral, icon = Icons.Filled.Close)
+            }
             if (query.isNotBlank() && results.isEmpty()) {
                 Text(
                     "No one with that name",

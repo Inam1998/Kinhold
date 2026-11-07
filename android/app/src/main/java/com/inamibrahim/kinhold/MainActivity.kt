@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.toArgb
 import com.inamibrahim.kinhold.ui.AppSettings
 import com.inamibrahim.kinhold.ui.KinholdApp
 import com.inamibrahim.kinhold.ui.KinholdTheme
@@ -26,6 +27,8 @@ class MainActivity : ComponentActivity() {
                     statusBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
                     navigationBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
                 )
+                // The window behind the app is the app's own background in both themes, so nothing dark can flash between screens.
+                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(com.inamibrahim.kinhold.ui.Palette.Background.toArgb()))
                 onDispose {}
             }
             KinholdTheme(mode) { KinholdApp() }

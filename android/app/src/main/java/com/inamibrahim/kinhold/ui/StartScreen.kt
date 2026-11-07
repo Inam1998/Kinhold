@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.inamibrahim.kinhold.ui
 
 import androidx.compose.foundation.background
@@ -7,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,9 +88,10 @@ fun StartScreen(vm: KinholdViewModel, onHelp: () -> Unit, onSettings: () -> Unit
                 }
             }
 
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+            FlowRow(
+                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Pill("Import a GEDCOM file", selected = false, onClick = openGedcom)
                 Pill("How Kinhold works", selected = false, onClick = onHelp)
@@ -123,9 +128,10 @@ fun StartScreen(vm: KinholdViewModel, onHelp: () -> Unit, onSettings: () -> Unit
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp, start = 24.dp, end = 20.dp),
             )
             // The padding sits inside the scrolling row so the buttons slide to the screen edge, not to the margin.
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            FlowRow(
+                Modifier.padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 for (n in SampleSizes) Pill("%,d people".format(n), selected = false, onClick = { onSample(n) })
             }

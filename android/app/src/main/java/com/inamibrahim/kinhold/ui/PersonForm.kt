@@ -1,7 +1,25 @@
 package com.inamibrahim.kinhold.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +67,7 @@ import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Event
+import com.inamibrahim.kinhold.model.GeoPin
 import com.inamibrahim.kinhold.model.Limits
 import com.inamibrahim.kinhold.model.EventJson
 import com.inamibrahim.kinhold.model.EventKind
@@ -68,6 +87,7 @@ fun PersonFormScreen(
     onSave: (PersonDraft, PhotoChange, PersonDetails) -> Unit,
     onDelete: (() -> Unit)?,
     onCancel: () -> Unit,
+    scroll: androidx.compose.foundation.ScrollState,
 ) {
     // A picked photo is only prepared here; it is stored when Save is pressed. It is not kept across rotation.
     var photo by remember { mutableStateOf<PhotoChange>(PhotoChange.Keep) }
@@ -97,6 +117,12 @@ fun PersonFormScreen(
     var died by rememberSaveable { mutableStateOf(initial.died?.toString() ?: "") }
     var diedMonth by rememberSaveable { mutableStateOf(initial.deathMonth?.toString() ?: "") }
     var diedDay by rememberSaveable { mutableStateOf(initial.deathDay?.toString() ?: "") }
+    var address by rememberSaveable { mutableStateOf(initial.address) }
+    var phone by rememberSaveable { mutableStateOf(initial.phone) }
+    var email by rememberSaveable { mutableStateOf(initial.email) }
+    var pinText by rememberSaveable { mutableStateOf(if (initial.lat != null && initial.lng != null) GeoPin(initial.lat, initial.lng).text() else "") }
+    val pin = if (pinText.isBlank()) null else GeoPin.parse(pinText)
+    val context = androidx.compose.ui.platform.LocalContext.current
     // Events and sources are kept as text so a half-finished list survives a screen rotation.
     var detailsJson by rememberSaveable { mutableStateOf(EventJson.encodeDetails(initialDetails)) }
     val details = remember(detailsJson) { EventJson.decodeDetails(detailsJson, editing = true) }
@@ -107,135 +133,209 @@ fun PersonFormScreen(
     var deathPlace by rememberSaveable { mutableStateOf(initial.deathPlace) }
     var notes by rememberSaveable { mutableStateOf(initial.notes) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    // Picking a pin in Google Maps: when the person comes back, a location they copied there is offered.
+    var waitingForMaps by rememberSaveable { mutableStateOf(false) }
+    var offered by remember { mutableStateOf<GeoPin?>(null) }
+    var pasteNotice by remember { mutableStateOf(false) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && waitingForMaps) {
+                waitingForMaps = false
+                offered = Actions.clipboardPin(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val draft = PersonDraft(
         given, surname, sex, born.toIntOrNull(), died.toIntOrNull(), birthPlace, deathPlace, notes,
         bornMonth.toIntOrNull(), bornDay.toIntOrNull(), diedMonth.toIntOrNull(), diedDay.toIntOrNull(),
+        initial.uid, address, phone, pin?.lat, pin?.lng, email,
     )
     val displayName = listOf(given, surname).filter { it.isNotBlank() }.joinToString(" ").ifEmpty { "this person" }
     val problem = when {
         !draft.hasName -> "Add a first name or a surname to save."
+        pinText.isNotBlank() && pin == null -> "The map pin is not a location. Paste two numbers such as 31.5204, 74.3587, or a long Google Maps link that contains them."
         !draft.datesAreReal -> "A birth or death date is not a real date. Check the day, month and year (a month needs a year, and a day needs a month)."
         !draft.datesMakeSense -> "The death date is before the birth date."
         else -> null
     }
 
-    if (editingEvent.isNotEmpty()) {
-        // One event is open: the editor takes the whole screen, and Save, Remove or Back return to the form.
-        val parts = editingEvent.split(":")
-        val forCouple = parts[0] == "c"
-        val partnerId = if (forCouple) parts.getOrNull(1)?.toIntOrNull() ?: -1 else -1
-        val index = parts.last().toIntOrNull() ?: -1
-        val list = if (forCouple) details.coupleEvents[partnerId].orEmpty() else details.events
-        fun store(updated: List<Event>) {
-            setDetails(
-                if (forCouple) details.copy(coupleEvents = details.coupleEvents + (partnerId to updated))
-                else details.copy(events = updated),
+    BackHandler(enabled = editingEvent.isNotEmpty()) { editingEvent = "" }
+
+    // Opening an event slides the editor in; Save, Remove or Back slide the form back, scrolled where it was.
+    AnimatedContent(
+        targetState = editingEvent,
+        modifier = Modifier.fillMaxSize().background(Palette.Background),
+        transitionSpec = {
+            val forward = targetState.isNotEmpty()
+            val ease = FastOutSlowInEasing
+            ContentTransform(
+                slideInHorizontally(tween(280, easing = ease)) { if (forward) it else -it / 4 },
+                slideOutHorizontally(tween(280, easing = ease)) { if (forward) -it / 4 else it },
+                targetContentZIndex = if (forward) 1f else -1f,
+                sizeTransform = null,
             )
-            editingEvent = ""
-        }
-        BackHandler { editingEvent = "" }
-        EventEditorScreen(
-            initial = list.getOrNull(index) ?: Event(if (forCouple) EventKind.Marriage else EventKind.Residence),
-            forCouple = forCouple,
-            heading = if (forCouple) "With ${spouses.firstOrNull { it.first == partnerId }?.second ?: "partner"}" else displayName,
-            onSave = { e -> store(if (index in list.indices) list.mapIndexed { i, old -> if (i == index) e else old } else list + e) },
-            onRemove = if (index in list.indices) ({ store(list.filterIndexed { i, _ -> i != index }) }) else null,
-            onCancel = { editingEvent = "" },
-        )
-        return
-    }
-
-    ScreenBackground {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-        ) {
-            ScreenHeader(if (isEditing) "Person" else "New person", title, Modifier.padding(top = 12.dp, bottom = 20.dp))
-
-            Row(Modifier.padding(bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                when (val p = photo) {
-                    is PhotoChange.Set -> AvatarPreview(p.photo.thumb, sex, 96.dp, ring = 3.dp)
-                    PhotoChange.Remove -> AvatarPreview(null, sex, 96.dp, ring = 3.dp)
-                    PhotoChange.Keep ->
-                        if (person != null && person.hasPhoto) Avatar(person, 96.dp, ring = 3.dp) else AvatarPreview(null, sex, 96.dp, ring = 3.dp)
-                }
-                Column(Modifier.padding(start = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Pill(
-                        if (hasPhoto) "Change photo" else "Add a photo",
-                        selected = false,
-                        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    )
-                    if (hasPhoto) Pill("Remove photo", selected = false, onClick = { photo = PhotoChange.Remove })
-                }
-            }
-            if (preparing) {
-                Text("Preparing the photo…", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
-            }
-            photoError?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
-            }
-
-            Field("First names", given, { given = it }, Modifier.fillMaxWidth())
-            Field("Surname", surname, { surname = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
-
-            Label("Sex", Modifier.padding(top = 18.dp, bottom = 8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("Male", sex == Sex.Male, { sex = Sex.Male })
-                Pill("Female", sex == Sex.Female, { sex = Sex.Female })
-                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown })
-            }
-
-            DateFields("Born (the year is enough)", bornDay, bornMonth, born, { d, m, y -> bornDay = d; bornMonth = m; born = y }, Modifier.padding(top = 14.dp))
-            Field("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
-            DateFields("Died (the year is enough)", diedDay, diedMonth, died, { d, m, y -> diedDay = d; diedMonth = m; died = y }, Modifier.padding(top = 14.dp))
-            Field("Place of death", deathPlace, { deathPlace = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
-            Field("Notes", notes, { notes = it }, Modifier.fillMaxWidth().padding(top = 14.dp), singleLine = false)
-
-            Label("Events", Modifier.padding(top = 24.dp, bottom = 8.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                details.events.forEachIndexed { i, e -> EventRow(e, { editingEvent = "p:$i" }) }
-                if (details.events.size < Limits.EVENTS) Pill("+ Add an event", false, { editingEvent = "p:-1" })
-            }
-            for ((partnerId, partnerName) in spouses) {
-                Label("With $partnerName (marriage and the like)", Modifier.padding(top = 20.dp, bottom = 8.dp))
-                val list = details.coupleEvents[partnerId].orEmpty()
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    list.forEachIndexed { i, e -> EventRow(e, { editingEvent = "c:$partnerId:$i" }) }
-                    if (list.size < Limits.EVENTS) Pill("+ Add marriage or divorce", false, { editingEvent = "c:$partnerId:-1" })
-                }
-            }
-            Label("Sources for this person in general", Modifier.padding(top = 20.dp, bottom = 8.dp))
-            SourcesEditor(details.sources, { setDetails(details.copy(sources = it)) })
-
-            if (problem != null) {
-                Text(
-                    problem,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Palette.Danger,
-                    modifier = Modifier.padding(top = 16.dp, start = 4.dp),
+        },
+        label = "event",
+    ) { editing ->
+        if (editing.isNotEmpty()) {
+            val parts = editing.split(":")
+            val forCouple = parts[0] == "c"
+            val partnerId = if (forCouple) parts.getOrNull(1)?.toIntOrNull() ?: -1 else -1
+            val index = parts.last().toIntOrNull() ?: -1
+            val list = if (forCouple) details.coupleEvents[partnerId].orEmpty() else details.events
+            fun store(updated: List<Event>) {
+                setDetails(
+                    if (forCouple) details.copy(coupleEvents = details.coupleEvents + (partnerId to updated))
+                    else details.copy(events = updated),
                 )
+                editingEvent = ""
             }
-            PrimaryButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank })) }, Modifier.fillMaxWidth().padding(top = 24.dp), enabled = problem == null && !preparing)
-            Pill("Cancel", false, onCancel, Modifier.fillMaxWidth().padding(top = 12.dp))
-            if (onDelete != null) {
-                Text(
-                    "Delete this person",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.Danger,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(50))
-                        .clickable { confirmDelete = true }
-                        .padding(vertical = 16.dp),
-                    textAlign = TextAlign.Center,
-                )
+            EventEditorScreen(
+                initial = list.getOrNull(index) ?: Event(if (forCouple) EventKind.Marriage else EventKind.Residence),
+                forCouple = forCouple,
+                heading = if (forCouple) "With ${spouses.firstOrNull { it.first == partnerId }?.second ?: "partner"}" else displayName,
+                onSave = { e -> store(if (index in list.indices) list.mapIndexed { i, old -> if (i == index) e else old } else list + e) },
+                onRemove = if (index in list.indices) ({ store(list.filterIndexed { i, _ -> i != index }) }) else null,
+                onCancel = { editingEvent = "" },
+            )
+        } else {
+            ScreenBackground {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .imePadding()
+                        .verticalScroll(scroll)
+                        .padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ScreenHeader(if (isEditing) "Person" else "New person", title, Modifier.padding(top = 12.dp, bottom = 6.dp))
+
+                    FormCard("Who they are", Icons.Filled.Person, Tones.Violet) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            when (val p = photo) {
+                                is PhotoChange.Set -> AvatarPreview(p.photo.thumb, sex, 88.dp, ring = 3.dp)
+                                PhotoChange.Remove -> AvatarPreview(null, sex, 88.dp, ring = 3.dp)
+                                PhotoChange.Keep ->
+                                    if (person != null && person.hasPhoto) Avatar(person, 88.dp, ring = 3.dp) else AvatarPreview(null, sex, 88.dp, ring = 3.dp)
+                            }
+                            Column(Modifier.padding(start = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Pill(
+                                    if (hasPhoto) "Change photo" else "Add a photo",
+                                    selected = false,
+                                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                )
+                                if (hasPhoto) Pill("Remove photo", selected = false, onClick = { photo = PhotoChange.Remove })
+                            }
+                        }
+                        if (preparing) {
+                            Text("Preparing the photo…", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
+                        }
+                        photoError?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
+                        }
+                        Field("First names", given, { given = it }, Modifier.fillMaxWidth())
+                        Field("Surname", surname, { surname = it }, Modifier.fillMaxWidth())
+                        Column {
+                            Label("Sex", Modifier.padding(bottom = 8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Pill("Male", sex == Sex.Male, { sex = Sex.Male })
+                                Pill("Female", sex == Sex.Female, { sex = Sex.Female })
+                                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown })
+                            }
+                        }
+                    }
+
+                    FormCard("Life", Icons.Filled.DateRange, Tones.Amber) {
+                        DateFields("Born", bornDay, bornMonth, born, { d, m, y -> bornDay = d; bornMonth = m; born = y })
+                        Field("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth())
+                        DateFields("Died", diedDay, diedMonth, died, { d, m, y -> diedDay = d; diedMonth = m; died = y })
+                        Field("Place of death", deathPlace, { deathPlace = it }, Modifier.fillMaxWidth())
+                    }
+
+                    FormCard("Contact", Icons.Filled.Call, Tones.Mint) {
+                        Field("Phone number (with country code for WhatsApp, e.g. +92…)", phone, { phone = it }, Modifier.fillMaxWidth(), KeyboardType.Phone)
+                        Field("Email", email, { email = it }, Modifier.fillMaxWidth(), KeyboardType.Email)
+                        Field("Address", address, { address = it }, Modifier.fillMaxWidth(), singleLine = false)
+                        Field("Map pin (latitude, longitude, or a Google Maps link)", pinText, { pinText = it }, Modifier.fillMaxWidth(), KeyboardType.Uri)
+                        offered?.let { found ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Tones.Mint.copy(alpha = 0.16f)).padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text("Use the location you copied (${found.text()})?", style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.weight(1f))
+                                DialogButton("Use it", { pinText = found.text(); offered = null }, kind = ButtonKind.Primary)
+                                DialogButton("No", { offered = null }, kind = ButtonKind.Neutral)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DialogButton(
+                                "Pick on Google Maps",
+                                {
+                                    waitingForMaps = true
+                                    Actions.map(context, displayName, address, pin)
+                                },
+                                kind = ButtonKind.Tonal,
+                                icon = Icons.Filled.LocationOn,
+                            )
+                            DialogButton(
+                                "Paste",
+                                {
+                                    val found = Actions.clipboardPin(context)
+                                    if (found != null) pinText = found.text() else pasteNotice = true
+                                },
+                                kind = ButtonKind.Neutral,
+                            )
+                        }
+                        if (pasteNotice) {
+                            Text("The clipboard holds no location. Copy coordinates or a full Google Maps link first.", style = MaterialTheme.typography.bodySmall, color = Palette.Danger)
+                        }
+                        Text(
+                            "Tap Pick on Google Maps, press and hold the place, tap the coordinates that appear (this copies them), then come back: Kinhold offers to use them.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Palette.TextMuted,
+                        )
+                    }
+
+                    FormCard("Notes", Icons.Filled.Edit, Tones.Sky) {
+                        Field("Notes", notes, { notes = it }, Modifier.fillMaxWidth(), singleLine = false)
+                    }
+
+                    FormCard("Events", Icons.Filled.Star, Tones.Coral) {
+                        details.events.forEachIndexed { i, e -> EventRow(e, { editingEvent = "p:$i" }) }
+                        if (details.events.size < Limits.EVENTS) DialogButton("Add an event", { editingEvent = "p:-1" }, kind = ButtonKind.Tonal, icon = Icons.Filled.Add)
+                        for ((partnerId, partnerName) in spouses) {
+                            Label("With $partnerName (marriage and the like)", Modifier.padding(top = 8.dp))
+                            val list = details.coupleEvents[partnerId].orEmpty()
+                            list.forEachIndexed { i, e -> EventRow(e, { editingEvent = "c:$partnerId:$i" }) }
+                            if (list.size < Limits.EVENTS) DialogButton("Add marriage or divorce", { editingEvent = "c:$partnerId:-1" }, kind = ButtonKind.Tonal, icon = Icons.Filled.Favorite)
+                        }
+                    }
+
+                    FormCard("Your own facts", Icons.Filled.Info, Tones.Teal) {
+                        FieldsEditor(details.fields, { setDetails(details.copy(fields = it)) })
+                    }
+
+                    FormCard("Sources for this person", Icons.Filled.Lock, Tones.Rose) {
+                        SourcesEditor(details.sources, { setDetails(details.copy(sources = it)) })
+                    }
+
+                    if (problem != null) {
+                        Text(problem, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
+                    }
+                    PrimaryButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank })) }, Modifier.fillMaxWidth(), enabled = problem == null && !preparing)
+                    DialogButton("Cancel", onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
+                    if (onDelete != null) {
+                        DialogButton("Delete this person", { confirmDelete = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger, icon = Icons.Filled.Delete)
+                    }
+                    Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
+                }
             }
-            Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
         }
     }
 
@@ -253,29 +353,10 @@ fun PersonFormScreen(
                 )
             },
             confirmButton = {
-                Text(
-                    "Delete",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.Danger,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable {
-                            confirmDelete = false
-                            onDelete()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-            },
-            dismissButton = {
-                Text(
-                    "Keep",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.Text,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable { confirmDelete = false }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DialogButton("Keep", { confirmDelete = false }, kind = ButtonKind.Neutral)
+                    DialogButton("Delete", { confirmDelete = false; onDelete() }, kind = ButtonKind.Danger)
+                }
             },
         )
     }
@@ -321,5 +402,19 @@ internal fun Field(
                 ) { inner() }
             },
         )
+    }
+}
+
+/** One section of the person form: a card with a tinted icon and a title, holding its fields, so the fields stand out from the background. */
+@Composable
+private fun FormCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tone: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
+    AppCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ToneIcon(icon, tone, 36.dp)
+                Text(title, style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
+            }
+            content()
+        }
     }
 }

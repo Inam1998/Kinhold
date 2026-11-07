@@ -1,0 +1,136 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
+package com.inamibrahim.kinhold.ui
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.inamibrahim.kinhold.data.KinholdViewModel
+import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.Person
+import com.inamibrahim.kinhold.model.Share
+import com.inamibrahim.kinhold.model.ShareDirection
+import com.inamibrahim.kinhold.model.ShareScope
+import java.time.LocalDate
+
+/** Choose how much of the tree around one person goes into a share file, and save it. */
+@Composable
+fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: () -> Unit) {
+    var direction by rememberSaveable { mutableIntStateOf(ShareDirection.Both.ordinal) }
+    var generations by rememberSaveable { mutableIntStateOf(0) }
+    var spouses by rememberSaveable { mutableStateOf(true) }
+    var excludeLiving by rememberSaveable { mutableStateOf(false) }
+    var photos by rememberSaveable { mutableStateOf(true) }
+    var contact by rememberSaveable { mutableStateOf(false) }
+    var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+
+    val scope = ShareScope(ShareDirection.entries[direction], generations, spouses, excludeLiving, photos, contact)
+    val count = remember(family, person.id, direction, generations, spouses, excludeLiving) {
+        Share.select(family, person.id, scope, LocalDate.now().year).size
+    }
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            vm.exportShare(uri, person.id, scope) { result ->
+                message = result.fold(
+                    { "Share file saved with $it ${if (it == 1) "person" else "people"}." to false },
+                    { (it.message ?: "The file could not be saved.") to true },
+                )
+            }
+        }
+    }
+
+    ScreenBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+        ) {
+            ScreenHeader("Share", "Share from ${person.name}", Modifier.padding(top = 12.dp, bottom = 16.dp))
+            Text(
+                "Makes a file with this person and the relatives you choose. A relative can open it in their Kinhold with " +
+                    "\"Merge a shared file\" and get only the people they do not have, and be asked about the rest.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Palette.TextMuted,
+            )
+            message?.let { (text, isError) ->
+                AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Text(text, style = MaterialTheme.typography.bodyLarge, color = if (isError) Palette.Danger else Palette.Accent, modifier = Modifier.padding(20.dp))
+                }
+            }
+
+            Text("Which relatives", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("Both ways", direction == ShareDirection.Both.ordinal, { direction = ShareDirection.Both.ordinal })
+                Pill("Ancestors", direction == ShareDirection.Ancestors.ordinal, { direction = ShareDirection.Ancestors.ordinal })
+                Pill("Descendants", direction == ShareDirection.Descendants.ordinal, { direction = ShareDirection.Descendants.ordinal })
+            }
+            Text("How many generations", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (g in listOf(1, 2, 3, 4)) Pill("$g", generations == g, { generations = g })
+                Pill("All", generations == 0, { generations = 0 })
+            }
+            Text("Also include", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("Spouses", spouses, { spouses = !spouses })
+                Pill("Photos", photos, { photos = !photos })
+                Pill("Contact details and own facts", contact, { contact = !contact })
+                Pill("Leave out people who may be alive", excludeLiving, { excludeLiving = !excludeLiving })
+            }
+            if (excludeLiving) {
+                Text(
+                    "Leaves out anyone with no death date who was born in the last 110 years. People with no dates at all are kept, " +
+                        "because Kinhold cannot tell. ${person.name} is always included.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Palette.TextMuted,
+                    modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                )
+            }
+
+            AppCard(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("$count ${if (count == 1) "person" else "people"} will be in the file", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                    Text(
+                        "With their events and sources. The file is not encrypted, so send it only to people you trust.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+                    )
+                    PrimaryButton(
+                        "Save the share file",
+                        { saver.launch("kinhold-share-${person.name.replace(' ', '-')}-${LocalDate.now()}.json") },
+                        Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 16.dp))
+            Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
+        }
+    }
+}

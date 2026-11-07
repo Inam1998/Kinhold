@@ -1,6 +1,16 @@
 package com.inamibrahim.kinhold.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,6 +42,7 @@ import com.inamibrahim.kinhold.data.PhotoChange
 import com.inamibrahim.kinhold.data.KinholdViewModel
 import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.describeAge
 import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Sex
@@ -50,11 +61,19 @@ sealed interface Screen {
 
     data object Settings : Screen
 
+    data object More : Screen
+
     /** The page with everything recorded about one person. */
     data class Person(val id: Int) : Screen
 
+    /** Choose and save a share file for the branch from one person. */
+    data class Share(val id: Int) : Screen
+
+    /** Review a file being merged into the tree. */
+    data object Merge : Screen
+
     /** The person form: [editing] is the person being changed, or null when adding one with [relation] to someone. */
-    data class Form(val editing: Int?, val relation: Relation?) : Screen
+    data class Form(val editing: Int?, val relation: Relation?, val fromPerson: Boolean = false) : Screen
 }
 
 private val ScreenSaver = Saver<Screen, String>(
@@ -64,13 +83,16 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Backup -> "backup"
             Screen.Help -> "help"
             Screen.Settings -> "settings"
+            Screen.More -> "more"
             is Screen.Person -> "person|${s.id}"
+            is Screen.Share -> "share|${s.id}"
+            Screen.Merge -> "merge"
             is Screen.Form ->"form|${s.editing ?: ""}|" + when (val r = s.relation) {
                 null -> ""
                 is Relation.ParentOf -> "p${r.childId}"
                 is Relation.ChildOf -> "c${r.parentId}:${r.otherParentId ?: ""}"
                 is Relation.SpouseOf -> "s${r.personId}"
-            }
+            } + if (s.fromPerson) "|f" else ""
         }
     },
     restore = { text ->
@@ -80,6 +102,12 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help
         } else if (text == "settings") {
             Screen.Settings
+        } else if (text == "more") {
+            Screen.More
+        } else if (text == "merge") {
+            Screen.Merge
+        } else if (text.startsWith("share|")) {
+            text.substringAfter("|").toIntOrNull()?.let { Screen.Share(it) } ?: Screen.Tree
         } else if (text.startsWith("person|")) {
             text.substringAfter("|").toIntOrNull()?.let { Screen.Person(it) } ?: Screen.Tree
         } else if (!text.startsWith("form|")) {
@@ -95,7 +123,7 @@ private val ScreenSaver = Saver<Screen, String>(
                     else -> Relation.SpouseOf(id)
                 }
             }
-            Screen.Form(parts.getOrNull(1)?.toIntOrNull(), relation)
+            Screen.Form(parts.getOrNull(1)?.toIntOrNull(), relation, parts.getOrNull(3) == "f")
         }
     },
 )
@@ -118,11 +146,32 @@ private fun KinholdContent(vm: KinholdViewModel) {
     var undo by remember { mutableStateOf<DeletedPerson?>(null) }
     // Set while asking who the other parent is for a child of someone with several spouses.
     var choosingParentFor by rememberSaveable { mutableStateOf<Int?>(null) }
+    var noMeNotice by rememberSaveable { mutableStateOf(false) }
+    // Each screen keeps its scroll position while the person goes deeper and comes back; going forward to it starts fresh.
+    val scrolls = remember { ScrollStore() }
+    val nav = remember { NavMemory(screen) }
+    if (nav.previous != screen) {
+        if (screen.depth() > nav.previous.depth()) scrolls.reset(screen.key())
+        nav.previous = screen
+    }
     LaunchedEffect(undo) {
         if (undo != null) {
             delay(UNDO_MILLIS)
             undo = null
         }
+    }
+
+    if (noMeNotice) {
+        AlertDialog(
+            onDismissRequest = { noMeNotice = false },
+            containerColor = Palette.Surface,
+            shape = RoundedCornerShape(28.dp),
+            title = { Text("Who are you?", color = Palette.Text) },
+            text = { Text("Open yourself in the tree, choose Details, then This is me. After that the Me button brings the tree back to you from anywhere.", color = Palette.TextMuted) },
+            confirmButton = {
+                DialogButton("OK", { noMeNotice = false }, kind = ButtonKind.Primary)
+            },
+        )
     }
 
     choosingParentFor?.let { parentId ->
@@ -137,21 +186,67 @@ private fun KinholdContent(vm: KinholdViewModel) {
         )
     }
 
-    val form = screen as? Screen.Form
+    AnimatedContent(
+        targetState = screen,
+        modifier = Modifier.fillMaxSize().background(Palette.Background),
+        transitionSpec = {
+            // The new screen slides over the old one, which only drifts back a little and never fades: every screen is opaque,
+            // so nothing but the app's own background can show through (no flash of black between screens).
+            val back = targetState.depth() < initialState.depth()
+            val ease = androidx.compose.animation.core.FastOutSlowInEasing
+            val enter = slideInHorizontally(tween(280, easing = ease)) { if (back) -it / 4 else it }
+            val exit = slideOutHorizontally(tween(280, easing = ease)) { if (back) it else -it / 4 }
+            ContentTransform(enter, exit, targetContentZIndex = if (back) -1f else 1f, sizeTransform = null)
+        },
+        label = "screen",
+    ) { target ->
+    val form = target as? Screen.Form
     when {
         !vm.loaded -> ScreenBackground { }
 
-        screen is Screen.Help -> HelpScreen(onClose = { screen = Screen.Tree })
+        target is Screen.More -> {
+            BackHandler { screen = Screen.Tree }
+            MoreScreen(
+                backupStatus = vm.lastBackup?.let { "Last backup: ${describeAge(it, System.currentTimeMillis())}" } ?: "Not backed up yet",
+                onBackup = { screen = Screen.Backup },
+                onSettings = { screen = Screen.Settings },
+                onHelp = { screen = Screen.Help },
+                onBack = { screen = Screen.Tree },
+            )
+        }
 
-        screen is Screen.Person -> {
-            val shown = (screen as Screen.Person).id
+        target is Screen.Help -> {
+            BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
+            HelpScreen(listScroll = scrolls.scroll("help"), onClose = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+        }
+
+        target is Screen.Share -> {
+            val shown = (target as Screen.Share).id
+            BackHandler { screen = Screen.Person(shown) }
+            if (shown in family) {
+                ShareScreen(vm, family, family.person(shown), onBack = { screen = Screen.Person(shown) })
+            } else {
+                screen = Screen.Tree
+            }
+        }
+
+        target is Screen.Merge -> {
+            val session = vm.mergeSession
+            BackHandler { vm.cancelMerge(); screen = Screen.Backup }
+            if (session != null) MergeScreen(vm, session, onDone = { screen = Screen.Tree }) else screen = Screen.Backup
+        }
+
+        target is Screen.Person -> {
+            val shown = (target as Screen.Person).id
             BackHandler { screen = Screen.Tree }
             if (shown in family) {
                 PersonPageScreen(
                     family = family,
                     person = family.person(shown),
                     loadDetails = vm::details,
-                    onEdit = { screen = Screen.Form(shown, null) },
+                    onEdit = { screen = Screen.Form(shown, null, fromPerson = true) },
+                    listState = scrolls.lazy("person"),
+                    onShare = { screen = Screen.Share(shown) },
                     onBack = { screen = Screen.Tree },
                 )
             } else {
@@ -159,19 +254,21 @@ private fun KinholdContent(vm: KinholdViewModel) {
             }
         }
 
-        screen is Screen.Settings -> {
-            BackHandler { screen = Screen.Tree }
-            SettingsScreen(onBack = { screen = Screen.Tree })
+        target is Screen.Settings -> {
+            BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
+            SettingsScreen(family, scroll = scrolls.scroll("settings"), onChooseMe = vm::setMe, onBack = { screen = if (family.size == 0) Screen.Tree else Screen.More })
         }
 
-        screen is Screen.Backup -> {
-            BackHandler { screen = Screen.Tree }
-            BackupScreen(vm = vm, peopleCount = family.size, onBack = { screen = Screen.Tree })
+        target is Screen.Backup -> {
+            BackHandler { screen = Screen.More }
+            BackupScreen(vm = vm, peopleCount = family.size, scroll = scrolls.scroll("backup"), onBack = { screen = Screen.More }, onMerge = { screen = Screen.Merge })
         }
 
         form != null -> {
             val editing = form.editing?.takeIf { it in family }?.let { family.person(it) }
-            BackHandler { screen = Screen.Tree }
+            // Back, Cancel and Save return to where the form was opened from: the person page or the tree.
+            val backTo: Screen = if (form.fromPerson && editing != null) Screen.Person(editing.id) else Screen.Tree
+            BackHandler { screen = backTo }
             // An existing person's events are read from the database once, when the form opens.
             val loaded by produceState<PersonDetails?>(if (editing == null) PersonDetails.Empty else null, editing?.id) {
                 if (editing != null) value = vm.details(editing.id)
@@ -190,7 +287,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     onPreparePhoto = vm::preparePhoto,
                     onSave = { draft, photo, details ->
                         if (editing != null) {
-                            vm.update(editing.id, draft, photo, details) { screen = Screen.Tree }
+                            vm.update(editing.id, draft, photo, details) { screen = backTo }
                         } else {
                             vm.add(draft, form.relation, (photo as? PhotoChange.Set)?.photo, details) { id ->
                                 // The first person becomes the focus; anyone added to a relative leaves the focus where it was.
@@ -209,7 +306,8 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     } else {
                         null
                     },
-                    onCancel = { screen = Screen.Tree },
+                    onCancel = { screen = backTo },
+                    scroll = scrolls.scroll("form"),
                 )
             }
         }
@@ -223,10 +321,15 @@ private fun KinholdContent(vm: KinholdViewModel) {
         )
 
         else -> TreeScreen(
+            state = scrolls.tree,
             family = family,
             // The person in focus may have been deleted, or none was chosen yet.
-            focusId = if (focusId in family) focusId else family.defaultFocus()?.id ?: family.people.first().id,
+            focusId = if (focusId in family) focusId else family.people.firstOrNull { it.isMe }?.id ?: family.defaultFocus()?.id ?: family.people.first().id,
             onFocus = { focusId = it },
+            onMe = {
+                val me = family.people.firstOrNull { it.isMe }
+                if (me != null) focusId = me.id else noMeNotice = true
+            },
             onAdd = {
                 undo = null
                 screen = Screen.Form(null, it)
@@ -250,17 +353,9 @@ private fun KinholdContent(vm: KinholdViewModel) {
                 screen = Screen.Form(it, null)
             },
             lastBackup = vm.lastBackup,
-            onHelp = {
+            onMore = {
                 undo = null
-                screen = Screen.Help
-            },
-            onBackup = {
-                undo = null
-                screen = Screen.Backup
-            },
-            onSettings = {
-                undo = null
-                screen = Screen.Settings
+                screen = Screen.More
             },
             undoText = undo?.let { "Deleted ${it.person.name}" },
             onUndo = {
@@ -268,6 +363,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                 undo = null
             },
         )
+    }
     }
 }
 
@@ -300,28 +396,14 @@ private fun OtherParentDialog(
         },
         confirmButton = {},
         dismissButton = {
-            Text(
-                "Cancel",
-                style = MaterialTheme.typography.labelLarge,
-                color = Palette.Text,
-                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onDismiss).padding(horizontal = 14.dp, vertical = 10.dp),
-            )
+            DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
         },
     )
 }
 
 @Composable
 private fun ChoiceRow(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        style = MaterialTheme.typography.titleMedium,
-        color = Palette.Accent,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 12.dp),
-    )
+    DialogButton(label, onClick, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal)
 }
 
 private fun formTitle(family: Family, form: Screen.Form, editing: Boolean): String = when {
@@ -374,4 +456,44 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
     relation is Relation.ParentOf && relation.childId in family ->
         family.parentsOf(relation.childId).take(1).map { it.id to it.name }
     else -> emptyList()
+}
+
+/** How deep a screen is: going to a lower number is "back", so the screen slides in from the left, otherwise from the right. */
+private fun Screen.depth(): Int = when (this) {
+    Screen.Tree -> 0
+    Screen.More, is Screen.Person -> 1
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form -> 2
+    Screen.Merge -> 3
+}
+
+private class NavMemory(var previous: Screen)
+
+/** The scroll positions of the screens that scroll, kept while the app runs so Back finds each screen where it was left. */
+class ScrollStore {
+    private val scrolls = HashMap<String, androidx.compose.foundation.ScrollState>()
+    private val lists = HashMap<String, androidx.compose.foundation.lazy.LazyListState>()
+
+    /** Zoom and position of the tree, kept so Back returns to the same view. */
+    val tree = TreeViewState()
+
+    fun scroll(key: String) = scrolls.getOrPut(key) { androidx.compose.foundation.ScrollState(0) }
+
+    fun lazy(key: String) = lists.getOrPut(key) { androidx.compose.foundation.lazy.LazyListState() }
+
+    fun reset(key: String) {
+        scrolls.remove(key)
+        lists.remove(key)
+    }
+}
+
+private fun Screen.key(): String = when (this) {
+    Screen.Tree -> "tree"
+    Screen.More -> "more"
+    Screen.Backup -> "backup"
+    Screen.Settings -> "settings"
+    Screen.Help -> "help"
+    Screen.Merge -> "merge"
+    is Screen.Person -> "person"
+    is Screen.Share -> "share"
+    is Screen.Form -> "form"
 }

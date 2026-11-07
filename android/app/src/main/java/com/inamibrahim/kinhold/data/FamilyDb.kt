@@ -3,6 +3,7 @@ package com.inamibrahim.kinhold.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.inamibrahim.kinhold.model.PersonUid
 
 /**
  * The tree on disk. SQLite writes are atomic, so a save that is interrupted leaves the tree as it was, and everything
@@ -36,7 +37,14 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
                 birth_month INTEGER,
                 birth_day INTEGER,
                 death_month INTEGER,
-                death_day INTEGER
+                death_day INTEGER,
+                address TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                geo_lat REAL,
+                geo_lng REAL,
+                is_me INTEGER NOT NULL DEFAULT 0,
+                email TEXT NOT NULL DEFAULT '',
+                uid TEXT
             )
             """.trimIndent(),
         )
@@ -62,8 +70,10 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             """.trimIndent(),
         )
         db.execSQL("CREATE INDEX partnership_b ON partnership(b_id)")
+        db.execSQL("CREATE UNIQUE INDEX person_uid ON person(uid)")
         createPhotoTable(db)
         createEventTables(db)
+        createFieldTable(db)
     }
 
     /** Photos live in their own table so the main query never reads their bytes; deleting a person deletes theirs. */
@@ -79,6 +89,14 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             """.trimIndent(),
         )
     }
+    /** Facts the owner defines for a person (a label and a value each), kept in the order they were entered. */
+    private fun createFieldTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE person_field (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE, label TEXT NOT NULL DEFAULT '', value TEXT NOT NULL DEFAULT '')",
+        )
+        db.execSQL("CREATE INDEX person_field_person ON person_field(person_id)")
+    }
+
 
     /**
      * Events belong to one person (person_id) or to one couple (a_id, b_id), never both; deleting the person or the couple
@@ -136,10 +154,30 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             }
             createEventTables(db)
         }
+        if (oldVersion < 4) {
+            // Every existing person gets a permanent random id, so a shared copy of them can be recognised later.
+            db.execSQL("ALTER TABLE person ADD COLUMN uid TEXT")
+            val ids = ArrayList<Long>()
+            db.rawQuery("SELECT id FROM person", null).use { while (it.moveToNext()) ids += it.getLong(0) }
+            for (id in ids) db.execSQL("UPDATE person SET uid = ? WHERE id = ?", arrayOf(PersonUid.create(), id))
+            db.execSQL("CREATE UNIQUE INDEX person_uid ON person(uid)")
+        }
+        if (oldVersion < 5) {
+            // Address, phone, a saved map pin, and which person is the owner of the tree.
+            db.execSQL("ALTER TABLE person ADD COLUMN address TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE person ADD COLUMN phone TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE person ADD COLUMN geo_lat REAL")
+            db.execSQL("ALTER TABLE person ADD COLUMN geo_lng REAL")
+            db.execSQL("ALTER TABLE person ADD COLUMN is_me INTEGER NOT NULL DEFAULT 0")
+        }
+        if (oldVersion < 6) {
+            db.execSQL("ALTER TABLE person ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            createFieldTable(db)
+        }
     }
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 6
         const val FILE_NAME = "kinhold.db"
     }
 }

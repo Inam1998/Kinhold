@@ -12,6 +12,10 @@ import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.BackupException
 import com.inamibrahim.kinhold.model.Family
+import com.inamibrahim.kinhold.model.Merge
+import com.inamibrahim.kinhold.model.MergeField
+import com.inamibrahim.kinhold.model.MergeResult
+import com.inamibrahim.kinhold.model.ShareScope
 import com.inamibrahim.kinhold.model.Gedcom
 import com.inamibrahim.kinhold.model.GedcomException
 import com.inamibrahim.kinhold.model.GedcomResult
@@ -63,6 +67,10 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
             repo.updatePerson(id, draft, photo, details)
             onDone()
         }
+    }
+
+    fun setMe(id: Int?) {
+        viewModelScope.launch { repo.setMe(id) }
     }
 
     /** A person's events, sources and couple events, read when a screen needs them (never all at once). */
@@ -173,6 +181,57 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** A file waiting to be merged, with the comparison against the tree. Kept here so it survives a screen rotation. */
+    var mergeSession by mutableStateOf<MergeSession?>(null)
+        private set
+
+    /** Writes a share file for the branch from [rootId] to the place the person chose. [onResult] gets the number of people. */
+    fun exportShare(uri: Uri, rootId: Int, scope: ShareScope, onResult: (Result<Int>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val (text, count) = repo.exportShare(rootId, scope, LocalDate.now().year)
+                withContext(Dispatchers.IO) {
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                        ?: throw IOException("Could not open the file to write to.")
+                    out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                }
+                count
+            }
+            onResult(result)
+        }
+    }
+
+    /** Reads a share file, a backup or a GEDCOM file and compares it with the tree; nothing is changed. */
+    fun startMerge(uri: Uri, onResult: (Result<MergeSession>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val data = withContext(Dispatchers.IO) {
+                    val input = getApplication<Application>().contentResolver.openInputStream(uri)
+                        ?: throw IOException("Could not open that file.")
+                    val bytes = input.use { it.readAtMost(MAX_BACKUP_BYTES) }
+                        ?: throw BackupException("This file is too large to be a family tree.")
+                    val first = bytes.firstOrNull { !it.toInt().toChar().isWhitespace() && it.toInt() != 0xEF && it.toInt() != 0xBB && it.toInt() != 0xBF }
+                    if (first?.toInt()?.toChar() == '{') BackupCodec.decode(bytes.toString(Charsets.UTF_8)) else Gedcom.read(bytes).data
+                }
+                MergeSession(data, repo.planMerge(data)).also { mergeSession = it }
+            }
+            onResult(result)
+        }
+    }
+
+    fun cancelMerge() {
+        mergeSession = null
+    }
+
+    /** Applies the choices made on the merge screen. [onResult] gets what was done. */
+    fun applyMerge(session: MergeSession, accepted: Set<Int>, useHis: Set<Pair<Int, MergeField>>, addEvents: Boolean, onResult: (Result<MergeResult>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { repo.applyMerge(session.data, accepted, useHis, addEvents) }
+            hasSafetyCopy = repo.hasSafetyCopy()
+            onResult(result)
+        }
+    }
+
     /** Replaces the tree with a backup that [readBackup] already checked. */
     fun restore(data: BackupData, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
@@ -210,3 +269,6 @@ private fun InputStream.readAtMost(limit: Int): ByteArray? {
     }
     return out.toByteArray()
 }
+
+/** A file read for merging and its comparison with the tree on this phone. */
+class MergeSession(val data: BackupData, val plan: Merge)

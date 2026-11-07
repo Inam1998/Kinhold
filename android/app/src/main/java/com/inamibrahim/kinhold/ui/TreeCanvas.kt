@@ -79,6 +79,13 @@ class TreeViewState {
     var flingJob: Job? = null
     private var bounds = Size.Zero
 
+    /** The person the view was last framed on, so coming back to the tree keeps the zoom and position the person left it at. */
+    var framedFocus = -1
+
+    fun adopt(layout: TreeLayout) {
+        bounds = Size(layout.width, layout.height)
+    }
+
     /** Screen pixels for one tree unit. */
     val pxPerUnit: Float get() = scale * density
 
@@ -281,6 +288,14 @@ fun TreeCanvas(
                     val pillTop = Offset(p.x + TreeMetrics.NODE_W / 2 - w / 2, p.y + TreeMetrics.NODE_H - 8f)
                     drawRoundRect(badgeColor, pillTop, Size(w, 17f), CornerRadius(8.5f))
                     drawText(label, Color.White, Offset(pillTop.x + 7f, pillTop.y + 3f))
+                }
+                if (p.person.isMe && nodeScreenW >= 60f) {
+                    // A small "YOU" pill on the top edge marks the owner of this tree.
+                    val label = badges.getOrPut("YOU") { measurer.measureLine("YOU", BadgeStyle, wide = true) }
+                    val w = label.size.width + 14f
+                    val pt = Offset(p.x + TreeMetrics.NODE_W - w - 10f, p.y - 8f)
+                    drawRoundRect(accent, pt, Size(w, 17f), CornerRadius(8.5f))
+                    drawText(label, Palette.OnAccent, Offset(pt.x + 7f, pt.y + 3f))
                 }
                 if (p.moreAbove) {
                     // A little arrow above the card: more ancestors are one tap away.

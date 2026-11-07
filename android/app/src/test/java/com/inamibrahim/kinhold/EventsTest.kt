@@ -160,7 +160,7 @@ class EventsTest {
         assertEquals(sampleDetails.events.getValue(1), data.details.events.getValue(1))
         assertEquals(sampleDetails.sources, data.details.sources)
         assertEquals(sampleDetails.couples, data.details.couples)
-        assertEquals(3, BackupCodec.VERSION)
+        assertEquals(6, BackupCodec.VERSION)
     }
 
     @Test

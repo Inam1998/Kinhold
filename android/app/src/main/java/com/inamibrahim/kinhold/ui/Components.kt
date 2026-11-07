@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -40,6 +41,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 
 /** The screen colour with a soft accent glow fading in from the top, as on every screen of the other apps. */
 @Composable
@@ -88,7 +96,7 @@ fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier)
 
 /** A fully round chip: raised fill when off, the solid accent with dark text when selected. */
 @Composable
-fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val press = rememberPressScale()
     Box(
         modifier
@@ -101,12 +109,14 @@ fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = if (selected) Palette.OnAccent else Palette.Text,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val tint = if (selected) Palette.OnAccent else Palette.Text
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = tint)
+        }
     }
 }
 
@@ -198,4 +208,103 @@ fun AppCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
         color = Palette.Surface,
         shadowElevation = 8.dp,
     ) { content() }
+}
+
+/** A square-ish button with the icon above its label, for rows of three to five actions that must all fit on screen. */
+@Composable
+fun ActionTile(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false, tone: Color = Palette.Accent) {
+    val press = rememberPressScale()
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier
+            .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
+            .shadow(3.dp, shape, clip = false)
+            .clip(shape)
+            .background(if (selected) tone.copy(alpha = 0.28f) else Palette.SurfaceHigh)
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ToneIcon(icon, tone, 40.dp)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.Text, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/** An icon in a soft circle of its own colour, the way the other apps mark kinds of things (call, map, family). */
+@Composable
+fun ToneIcon(icon: ImageVector, tone: Color, size: androidx.compose.ui.unit.Dp = 40.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape).background(tone.copy(alpha = if (Palette.dark) 0.22f else 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(size * 0.55f)) }
+}
+
+/** One place the floating bar can take you. */
+class NavItem(val label: String, val icon: ImageVector, val selected: Boolean = false, val onClick: () -> Unit)
+
+/** The rounded bar floating at the bottom of the main screens: every item shows its icon and its label, and the chosen one a soft pill. */
+@Composable
+fun FloatingNav(items: List<NavItem>, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .shadow(8.dp, RoundedCornerShape(28.dp), clip = false)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Palette.Surface)
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        for (item in items) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(if (item.selected) Palette.Accent.copy(alpha = 0.22f) else Color.Transparent)
+                    .semantics(mergeDescendants = true) { contentDescription = item.label }
+                    .clickable(role = Role.Tab, onClick = item.onClick)
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val tint = if (item.selected) Palette.Accent else Palette.TextMuted
+                Icon(item.icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                Text(item.label, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    }
+}
+
+/** How a [DialogButton] looks: the main action, a soft accent action, a neutral one such as Cancel, or a destructive one. */
+enum class ButtonKind { Primary, Tonal, Neutral, Danger }
+
+/**
+ * A real button for dialogs and for actions that used to be plain links (Done, Cancel, Clear, Delete, Undo, Remove). Rounded,
+ * filled, with a ripple and a small press effect, like the buttons of the other apps.
+ */
+@Composable
+fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Tonal, icon: ImageVector? = null) {
+    val press = rememberPressScale()
+    val (fill, ink) = when (kind) {
+        ButtonKind.Primary -> Palette.Accent to Palette.OnAccent
+        ButtonKind.Tonal -> Palette.Accent.copy(alpha = if (Palette.dark) 0.22f else 0.16f) to (if (Palette.dark) Palette.Accent else Palette.AccentDeep)
+        ButtonKind.Neutral -> Palette.SurfaceHigh to Palette.Text
+        ButtonKind.Danger -> Palette.Danger.copy(alpha = if (Palette.dark) 0.22f else 0.14f) to Palette.Danger
+    }
+    Row(
+        modifier
+            .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
+            .height(44.dp)
+            .clip(RoundedCornerShape(50))
+            .background(fill)
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = ink)
+    }
 }

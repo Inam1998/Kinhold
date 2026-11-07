@@ -70,27 +70,15 @@ fun rememberGedcomImporter(
                 }
             },
             confirmButton = {
-                Row {
-                    if (currentPeople > 0) DialogAction("Add", Palette.Accent) { finish(replace = false) }
-                    DialogAction(if (currentPeople > 0) "Replace" else "Import", Palette.Accent) { finish(replace = true) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (currentPeople > 0) DialogButton("Add", { finish(replace = false) }, kind = ButtonKind.Tonal)
+                    DialogButton(if (currentPeople > 0) "Replace" else "Import", { finish(replace = true) }, kind = ButtonKind.Primary)
                 }
             },
-            dismissButton = { DialogAction("Cancel", Palette.Text) { pending = null } },
+            dismissButton = { DialogButton("Cancel", { pending = null }, kind = ButtonKind.Neutral) },
         )
     }
 
     return remember(opener) { { opener.launch(arrayOf("*/*")) } }
 }
 
-@Composable
-private fun DialogAction(label: String, color: Color, onClick: () -> Unit) {
-    Text(
-        label,
-        style = MaterialTheme.typography.labelLarge,
-        color = color,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-    )
-}
