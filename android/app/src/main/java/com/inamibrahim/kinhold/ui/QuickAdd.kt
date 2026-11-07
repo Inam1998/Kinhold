@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -76,13 +77,16 @@ fun QuickAddDialog(family: Family, personId: Int, suggest: (Relation) -> PersonD
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 EqualRow(2) {
                     kinds.forEach { KindChip(it, it == k, Modifier.weight(1f)) { kind = it.name } }
+                    // An odd count would stretch the last chip across the row; an empty half keeps it the same size as the others.
+                    if (kinds.size % 2 == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                 }
                 androidx.compose.animation.AnimatedVisibility(k == QuickKind.Child && spouses.size > 1) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Other parent", style = androidx.compose.material3.MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
                     EqualRow(2) {
                         spouses.forEach { Pill(it.name, otherParent == it.id, { otherParent = it.id }, Modifier.weight(1f), icon = Icons.Filled.Person) }
-                        Pill("Nobody", otherParent == -1, { otherParent = -1 }, Modifier.weight(1f))
+                        Pill("Nobody", otherParent == -1, { otherParent = -1 }, Modifier.weight(1f), icon = Icons.Filled.Close)
+                        if ((spouses.size + 1) % 2 == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                     }
                 }
                 }
@@ -151,7 +155,7 @@ private fun KindChip(kind: QuickKind, selected: Boolean, modifier: Modifier = Mo
             .clickable(onClick = onClick)
             .padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.Start,
     ) {
         ToneIcon(kind.icon(), tone, 30.dp)
         Text(kind.label, style = androidx.compose.material3.MaterialTheme.typography.labelLarge, color = Palette.Text, modifier = Modifier.padding(start = 8.dp))

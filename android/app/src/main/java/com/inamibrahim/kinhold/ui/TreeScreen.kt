@@ -142,7 +142,8 @@ fun TreeScreen(
     val landscape = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
 
     val header: @Composable () -> Unit = {
-        ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
+        // Landscape is short, so the big title is left out there and only the one-line status is kept.
+        if (!landscape) ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
         val now = System.currentTimeMillis()
         val backupText = lastBackup?.let { "Backed up ${describeAge(it, now)}" } ?: "Not backed up yet"
         // Worth a nudge once there is real work to lose: amber when never backed up, or not for a month.
@@ -154,7 +155,7 @@ fun TreeScreen(
             },
             style = MaterialTheme.typography.bodyMedium,
             color = Palette.TextMuted,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = if (landscape) 10.dp else 4.dp, bottom = if (landscape) 0.dp else 12.dp),
         )
     }
     val banner: @Composable () -> Unit = {
@@ -222,8 +223,9 @@ fun TreeScreen(
                 onFocus = onFocus,
                 collapsed = cardCollapsed,
                 onToggle = onToggleCard,
+                compact = landscape,
                 modifier = Modifier
-                    .padding(start = 20.dp, end = 20.dp, top = 12.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = if (landscape) 8.dp else 12.dp)
                     .fillMaxWidth(),
             )
         }
@@ -235,7 +237,7 @@ fun TreeScreen(
                 NavItem("Find", Icons.Filled.Search, searching) { searching = !searching },
                 NavItem("More", Icons.Filled.Menu, false, onMore),
             ),
-            navModifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
+            navModifier.padding(horizontal = 20.dp, vertical = if (landscape) 6.dp else 12.dp).fillMaxWidth(),
         )
     }
 
@@ -244,7 +246,7 @@ fun TreeScreen(
             // Wide and short: the tree gets the whole left side and everything else sits in a column on the right.
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.displayCutout).imePadding()) {
                 treeBox(Modifier.weight(1f).fillMaxHeight())
-                Column(Modifier.width(380.dp).fillMaxHeight()) {
+                Column(Modifier.width(440.dp).fillMaxHeight()) {
                     Column(Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                         header()
                         banner()
@@ -281,14 +283,15 @@ private fun FocusCard(
     collapsed: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val parents = family.parentsOf(person.id).size
     val spouses = family.spousesOf(person.id).size
     val children = family.childrenOf(person.id).size
     AppCard(modifier) {
-        Column(Modifier.padding(20.dp)) {
+        Column(Modifier.padding(if (compact) 12.dp else 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 48.dp else 64.dp, androidx.compose.animation.core.tween(280), label = "avatar").value, ring = 3.dp)
+                Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 44.dp else if (compact) 52.dp else 64.dp, androidx.compose.animation.core.tween(280), label = "avatar").value, ring = 3.dp)
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -326,13 +329,14 @@ private fun FocusCard(
             // Siblings, half-siblings and step relatives, worked out from the links. Tapping one moves the focus to them.
             // At most four are shown here (the rest are on the Details page), wrapping instead of scrolling sideways.
             val relatives = remember(family, person.id) { family.relativesOf(person.id) }
+            val shown = if (compact) 2 else 4
             if (relatives.isNotEmpty()) {
                 FlowRow(
-                    Modifier.padding(top = 14.dp),
+                    Modifier.padding(top = if (compact) 8.dp else 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for (r in relatives.take(4)) {
+                    for (r in relatives.take(shown)) {
                         Column(
                             Modifier
                                 .clip(RoundedCornerShape(16.dp))
@@ -344,7 +348,7 @@ private fun FocusCard(
                             Text(r.person.name, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, maxLines = 1)
                         }
                     }
-                    if (relatives.size > 4) {
+                    if (relatives.size > shown) {
                         Column(
                             Modifier
                                 .clip(RoundedCornerShape(16.dp))
@@ -352,7 +356,7 @@ private fun FocusCard(
                                 .clickable(onClick = onDetails)
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) {
-                            Text("${relatives.size - 4} more", style = MaterialTheme.typography.labelMedium, color = Palette.Accent)
+                            Text("${relatives.size - shown} more", style = MaterialTheme.typography.labelMedium, color = Palette.Accent)
                             Text("See all", style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
                         }
                     }
@@ -360,16 +364,23 @@ private fun FocusCard(
             }
             // Two rows of equal icon tiles, so six actions never get cramped or hidden off the edge.
             val sibling = remember(family, person.id) { siblingRelation(family, person.id) }
-            Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky)
-                ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
+            val first: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky, compact = compact)
+                ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber, compact = compact)
                 // A person can have up to four parents recorded (birth, adoptive, foster, step) and any number of spouses.
-                if (parents < Family.MAX_PARENTS) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet)
+                if (parents < Family.MAX_PARENTS) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet, compact = compact)
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (sibling != null) ActionTile("Sibling", Icons.AutoMirrored.Filled.ArrowForward, { onAdd(sibling) }, Modifier.weight(1f), tone = Tones.Teal)
-                ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose)
-                ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint)
+            val second: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                if (sibling != null) ActionTile("Sibling", Icons.AutoMirrored.Filled.ArrowForward, { onAdd(sibling) }, Modifier.weight(1f), tone = Tones.Teal, compact = compact)
+                ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose, compact = compact)
+                ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint, compact = compact)
+            }
+            if (compact) {
+                // Landscape is short: all the tiles share one row, so the card needs no scrolling.
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { first(); second() }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), content = first)
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), content = second)
             }
             }
             }

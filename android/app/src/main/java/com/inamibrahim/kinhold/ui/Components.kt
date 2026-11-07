@@ -144,7 +144,8 @@ fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
             .semantics(mergeDescendants = true) { contentDescription = label }
             .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
+        // With an icon the content starts at the left, so the icons of buttons stacked or in a row line up; a plain label stays centred.
+        contentAlignment = if (icon != null) Alignment.CenterStart else Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val tint by animateColorAsState(if (selected) Palette.OnAccent else Palette.Text, tween(200), label = "pillText")
@@ -249,7 +250,7 @@ fun AppCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 
 /** A square-ish button with the icon above its label, for rows of three to five actions that must all fit on screen. */
 @Composable
-fun ActionTile(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false, tone: Color = Palette.Accent) {
+fun ActionTile(label: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false, tone: Color = Palette.Accent, compact: Boolean = false) {
     val press = rememberPressScale()
     val shape = RoundedCornerShape(20.dp)
     Column(
@@ -260,11 +261,11 @@ fun ActionTile(label: String, icon: ImageVector, onClick: () -> Unit, modifier: 
             .background(if (selected) tone.copy(alpha = 0.28f) else Palette.SurfaceHigh)
             .semantics(mergeDescendants = true) { contentDescription = label }
             .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
+            .padding(vertical = if (compact) 6.dp else 10.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ToneIcon(icon, tone, 40.dp)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.Text, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+        ToneIcon(icon, tone, if (compact) 32.dp else 40.dp)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.Text, maxLines = 1, modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp))
     }
 }
 
@@ -337,7 +338,8 @@ fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
             .clickable(enabled = enabled, interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+        // Icon first, then the label, starting at the left so icons line up between buttons of one group.
+        horizontalArrangement = if (icon != null) Arrangement.Start else Arrangement.Center,
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))

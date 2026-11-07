@@ -134,7 +134,9 @@ class TreeViewState {
      * the new tree is placed so that this person has not moved; [slideOrShow] then glides the view to the centre. Without
      * this the first frame of the new tree would be drawn in the old place.
      */
-    private var jumping = false
+    /** True when the new focus was not on screen (Find, Me), so the new tree fades in as it rises; a tap on a visible card does not fade. */
+    var jumping = false
+        private set
 
     fun prepareSlide(layout: TreeLayout) {
         slideJob?.cancel()
@@ -194,7 +196,7 @@ class TreeViewState {
         val s0 = scale
         val o0 = offset
         slideJob = scope.launch {
-            androidx.compose.animation.core.animate(0f, 1f, animationSpec = tween(if (jumping) 260 else 340, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { p, _ ->
+            androidx.compose.animation.core.animate(0f, 1f, animationSpec = tween(if (jumping) 260 else 560, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { p, _ ->
                 scale = s0 + (target.scale - s0) * p
                 offset = Offset(o0.x + (target.offset.x - o0.x) * p, o0.y + (target.offset.y - o0.y) * p)
             }
@@ -272,11 +274,12 @@ fun TreeCanvas(
     val scope = rememberCoroutineScope()
     val avatars = LocalAvatars.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
-    // The tree fades in when the focus moves, which is a change of the layer's opacity only, so it costs no redraw.
-    val fade = remember { Animatable(1f) }
-    LaunchedEffect(layout) {
-        fade.snapTo(0.15f)
-        fade.animateTo(1f, tween(240))
+    // Only a far jump (Find, Me) fades in, which is a change of the layer's opacity only, so it costs no redraw. The starting
+    // opacity is set while the new layout is created, before its first draw: setting it in an effect let one frame of the
+    // new tree show at full strength, then dim, which was the flash. A tap on a visible card never dims the tree at all.
+    val fade = remember(layout) { Animatable(if (state.jumping) 0.15f else 1f) }
+    LaunchedEffect(fade) {
+        if (fade.value < 1f) fade.animateTo(1f, tween(240))
     }
     val names = remember(layout) { HashMap<Int, TextLayoutResult>() }
     val years = remember(layout) { HashMap<Int, TextLayoutResult>() }

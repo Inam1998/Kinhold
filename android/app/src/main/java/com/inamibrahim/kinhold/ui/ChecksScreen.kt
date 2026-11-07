@@ -38,7 +38,11 @@ import com.inamibrahim.kinhold.model.Finding
 import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.TreeChecks
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -49,7 +53,12 @@ private class CheckResult(val findings: List<Finding>, val duplicates: List<Dupl
 fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageDate>?, onOpen: (Int) -> Unit, onBack: () -> Unit) {
     val result by produceState<CheckResult?>(null, family, marriages) {
         if (marriages != null) {
-            value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family)) }
+            // The bar stays up for at least a moment, so a small tree does not make it flash by.
+            kotlinx.coroutines.coroutineScope {
+                val minimum = async { delay(600) }
+                value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family)) }
+                minimum.await()
+            }
         }
     }
     var dismissed by remember { mutableStateOf(vm.dismissedDuplicates()) }
@@ -64,7 +73,7 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
             LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 notice?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Accent, modifier = Modifier.padding(start = 4.dp)) } }
                 if (r == null) {
-                    item { Text("Checking your tree…", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp)) }
+                    item { CheckingCard(family.size) }
                 } else {
                     item { SectionTitle("Possible duplicates", Tones.Violet, Icons.Filled.Person) }
                     if (dups.isEmpty()) item { Quiet("No one looks entered twice.") }
@@ -126,6 +135,27 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                 }
             },
         )
+    }
+}
+
+/** Shown while the checks run: a rounded bar that keeps moving, because the time the checks take is not known in advance. */
+@Composable
+private fun CheckingCard(people: Int) {
+    AppCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ToneIcon(Icons.Filled.Check, Tones.Teal, 40.dp)
+                Column(Modifier.padding(start = 14.dp)) {
+                    Text("Checking your tree", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                    Text("Looking at ${"%,d".format(people)} ${if (people == 1) "person" else "people"}", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                }
+            }
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(8.dp).clip(RoundedCornerShape(50)),
+                color = Palette.Accent,
+                trackColor = Palette.SurfaceHigh,
+            )
+        }
     }
 }
 

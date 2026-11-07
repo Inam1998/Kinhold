@@ -158,12 +158,15 @@ fun PersonFormScreen(
     var waitingForMaps by rememberSaveable { mutableStateOf(false) }
     var offered by remember { mutableStateOf<GeoPin?>(null) }
     var pasteNotice by remember { mutableStateOf(false) }
+    var nothingCopied by remember { mutableStateOf(false) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && waitingForMaps) {
                 waitingForMaps = false
                 offered = Actions.clipboardPin(context)
+                // Coming back with nothing copied: say what is still to do instead of showing nothing.
+                nothingCopied = offered == null
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -303,13 +306,16 @@ fun PersonFormScreen(
                                 DialogButton("No", { offered = null }, kind = ButtonKind.Neutral)
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        EqualRow(2) {
                             DialogButton(
-                                "Pick on Google Maps",
+                                "Choose on map",
                                 {
                                     waitingForMaps = true
+                                    nothingCopied = false
+                                    pasteNotice = false
                                     Actions.map(context, displayName, address, pin)
                                 },
+                                Modifier.weight(1f),
                                 kind = ButtonKind.Tonal,
                                 icon = Icons.Filled.LocationOn,
                             )
@@ -317,19 +323,32 @@ fun PersonFormScreen(
                                 "Paste",
                                 {
                                     val found = Actions.clipboardPin(context)
-                                    if (found != null) pinText = found.text() else pasteNotice = true
+                                    nothingCopied = false
+                                    if (found != null) { pinText = found.text(); pasteNotice = false } else pasteNotice = true
                                 },
+                                Modifier.weight(1f),
                                 kind = ButtonKind.Neutral,
+                                icon = Icons.Filled.Edit,
                             )
                         }
                         if (pasteNotice) {
                             Text("The clipboard holds no location. Copy coordinates or a full Google Maps link first.", style = MaterialTheme.typography.bodySmall, color = Palette.Danger)
                         }
-                        Text(
-                            "Tap Pick on Google Maps, press and hold the place, tap the coordinates that appear (this copies them), then come back: Kinhold offers to use them.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Palette.TextMuted,
-                        )
+                        if (nothingCopied) {
+                            Text("No location was copied. In your maps app press and hold the place, then tap the numbers that appear. Come back here and Kinhold offers them.", style = MaterialTheme.typography.bodySmall, color = Tones.Amber)
+                        }
+                        // The steps are shown only until a pin is set, so they do not crowd the card afterwards.
+                        if (pin == null) {
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Palette.SurfaceHigh).padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text("How to choose a place", style = MaterialTheme.typography.labelMedium, color = Palette.Text)
+                                for ((n, step) in listOf("Tap Choose on map. It opens your maps app, at the address if you typed one.", "Press and hold the place.", "Tap the numbers that appear. This copies them.", "Come back to Kinhold and tap Use it.").withIndex()) {
+                                    Text("${n + 1}.  $step", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                                }
+                            }
+                        }
                     }
 
                     FormCard("Notes", Icons.Filled.Edit, Tones.Sky) {
