@@ -281,7 +281,7 @@ enum class ButtonKind { Primary, Tonal, Neutral, Danger }
  * filled, with a ripple and a small press effect, like the buttons of the other apps.
  */
 @Composable
-fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Tonal, icon: ImageVector? = null) {
+fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Tonal, icon: ImageVector? = null, enabled: Boolean = true) {
     val press = rememberPressScale()
     val (fill, ink) = when (kind) {
         ButtonKind.Primary -> Palette.Accent to Palette.OnAccent
@@ -296,7 +296,8 @@ fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
             .clip(RoundedCornerShape(50))
             .background(fill)
             .semantics(mergeDescendants = true) { contentDescription = label }
-            .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .clickable(enabled = enabled, interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,

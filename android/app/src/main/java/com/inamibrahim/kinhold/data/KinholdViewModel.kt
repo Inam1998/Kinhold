@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.inamibrahim.kinhold.model.AutoBackupPolicy
 import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.BackupException
@@ -23,6 +24,10 @@ import com.inamibrahim.kinhold.model.PersonDetails
 import com.inamibrahim.kinhold.model.PersonDraft
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -43,9 +48,27 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     var loaded by mutableStateOf(false)
         private set
 
-    /** When a backup file was last saved, in milliseconds, or null if never. */
-    var lastBackup by mutableStateOf(prefs.getLong(LAST_BACKUP, 0L).takeIf { it > 0 })
+    /** When a backup file was last saved by hand, in milliseconds, or null if never. */
+    private var lastManualBackup by mutableStateOf(prefs.getLong(LAST_BACKUP, 0L).takeIf { it > 0 })
+
+    /** When the last automatic backup was written, or null if none yet. */
+    var lastAutoBackup by mutableStateOf(prefs.getLong(LAST_AUTO, 0L).takeIf { it > 0 })
         private set
+
+    /** The latest backup of either kind, for the "backed up" line on the tree screen. */
+    val lastBackup: Long? get() = listOfNotNull(lastManualBackup, lastAutoBackup).maxOrNull()
+
+    /** The folder chosen for automatic backups outside the app, its name, and the last problem writing a backup (or null). */
+    var autoFolderUri by mutableStateOf(prefs.getString(AUTO_FOLDER, null)?.let(Uri::parse))
+        private set
+    var autoFolderName by mutableStateOf<String?>(null)
+        private set
+    var autoError by mutableStateOf<String?>(null)
+        private set
+
+    private val autoStore = AutoBackupStore(java.io.File(app.filesDir, "auto-backups"))
+    private val autoLock = Mutex()
+    private var lastSavedSnapshot: Family? = null
 
     /** Whether the tree from before the last restore is still kept, so the restore can be undone. */
     var hasSafetyCopy by mutableStateOf(repo.hasSafetyCopy())
@@ -55,6 +78,12 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.load()
             loaded = true
+            refreshAutoFolderName()
+            // A tree that changed gets an automatic copy shortly after, and one is made at start if the last is a day old.
+            if (repo.family.value.size > 0 && (lastAutoBackup == null || System.currentTimeMillis() - lastAutoBackup!! > 86_400_000L)) runAutoBackup(force = true)
+        }
+        viewModelScope.launch {
+            repo.family.drop(1).debounce(45_000).collect { runAutoBackup(force = false) }
         }
     }
 
@@ -114,7 +143,7 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
                     out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
                 }
                 prefs.edit { putLong(LAST_BACKUP, System.currentTimeMillis()) }
-                lastBackup = System.currentTimeMillis()
+                lastManualBackup = System.currentTimeMillis()
                 count
             }
             onResult(result)
@@ -232,6 +261,97 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------------------------------------------------------------- automatic backup
+
+    private suspend fun refreshAutoFolderName() {
+        val tree = autoFolderUri ?: run { autoFolderName = null; return }
+        autoFolderName = withContext(Dispatchers.IO) { ExternalBackupFolder.displayName(getApplication(), tree) }
+    }
+
+    /**
+     * Writes an automatic backup if one is due: always inside the app, and also to the chosen folder. The text is decoded
+     * again before it is saved, so a backup that could not be restored is never kept. [onlyIfChanged] skips the write when
+     * nothing has changed since the last one (used when the app goes to the background).
+     */
+    private suspend fun runAutoBackup(force: Boolean, onlyIfChanged: Boolean = false) = autoLock.withLock {
+        val snapshot = repo.family.value
+        if (snapshot.size == 0) return@withLock
+        val changed = snapshot !== lastSavedSnapshot
+        if (onlyIfChanged && !changed) return@withLock
+        val now = System.currentTimeMillis()
+        if (!AutoBackupPolicy.isDue(lastAutoBackup, now, changed, force)) return@withLock
+        val app = getApplication<Application>()
+        try {
+            val name = AutoBackupPolicy.fileName(java.time.LocalDateTime.now())
+            val text = withContext(Dispatchers.IO) {
+                val text = repo.exportBackup()
+                BackupCodec.decode(text)
+                autoStore.write(name, text)
+                autoStore.prune()
+                text
+            }
+            lastSavedSnapshot = snapshot
+            lastAutoBackup = now
+            prefs.edit { putLong(LAST_AUTO, now) }
+            autoError = null
+            autoFolderUri?.let { tree ->
+                try {
+                    withContext(Dispatchers.IO) { ExternalBackupFolder.write(app, tree, name, text) }
+                } catch (e: Exception) {
+                    autoError = "The backup folder could not be written to (${e.message ?: "unknown problem"}). Choose it again."
+                }
+            }
+        } catch (e: Exception) {
+            autoError = "The automatic backup failed: ${e.message ?: "unknown problem"}."
+        }
+    }
+
+    /** Backs up now, whatever the time since the last one. */
+    fun autoBackupNow() {
+        viewModelScope.launch { runAutoBackup(force = true) }
+    }
+
+    /** Called when the app leaves the screen: saves a copy if anything changed since the last one. */
+    fun autoBackupIfChanged() {
+        viewModelScope.launch { runAutoBackup(force = true, onlyIfChanged = true) }
+    }
+
+    private val folderFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+    /** Keeps [uri] as the folder for automatic backups, with permission that lasts, and backs up to it at once. */
+    fun setAutoFolder(uri: Uri) {
+        viewModelScope.launch {
+            val resolver = getApplication<Application>().contentResolver
+            runCatching { resolver.takePersistableUriPermission(uri, folderFlags) }
+            autoFolderUri?.takeIf { it != uri }?.let { old -> runCatching { resolver.releasePersistableUriPermission(old, folderFlags) } }
+            prefs.edit { putString(AUTO_FOLDER, uri.toString()) }
+            autoFolderUri = uri
+            refreshAutoFolderName()
+            runAutoBackup(force = true)
+        }
+    }
+
+    fun clearAutoFolder() {
+        val resolver = getApplication<Application>().contentResolver
+        autoFolderUri?.let { old -> runCatching { resolver.releasePersistableUriPermission(old, folderFlags) } }
+        prefs.edit { remove(AUTO_FOLDER) }
+        autoFolderUri = null
+        autoFolderName = null
+    }
+
+    /** The newest automatic backup kept inside the app, read and checked, with when it was made; null if there is none. */
+    fun latestAutoCopy(onResult: (Result<Pair<BackupData, java.time.LocalDateTime>?>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val file = autoStore.latest() ?: return@withContext null
+                    BackupCodec.decode(file.readText()) to (AutoBackupPolicy.timeOf(file.name) ?: java.time.LocalDateTime.now())
+                }
+            }
+            onResult(result)
+        }
+    }
+
     /** Replaces the tree with a backup that [readBackup] already checked. */
     fun restore(data: BackupData, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
@@ -251,6 +371,8 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val LAST_BACKUP = "last_backup"
+        const val LAST_AUTO = "last_auto"
+        const val AUTO_FOLDER = "auto_folder"
         const val MAX_BACKUP_BYTES = 100 * 1024 * 1024
     }
 }

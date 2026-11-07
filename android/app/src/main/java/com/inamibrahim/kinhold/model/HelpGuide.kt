@@ -172,11 +172,14 @@ object HelpGuide {
             sections = listOf(
                 HelpSection("What a backup is", "One file holding everyone in your tree, their photos, events and sources, and every link between them."),
                 HelpSection("Saving one", "Open Backup, then Save a backup file, and choose where it goes: Google Drive, an email to yourself, your computer. Kinhold does not need access to your files for this."),
+                HelpSection("Automatic backup", "Kinhold also saves a copy by itself shortly after you change your tree, and when you leave the app. Open More, then Backup and sharing, then Automatic backup. Copies are kept inside the app (the newest ten, and the newest of each of the last seven days). Choose a folder there and the same copies are also written to it, which keeps your tree even if the app is uninstalled. Restore the latest copy puts back the newest copy kept inside the app."),
                 HelpSection("Reminders", "The tree screen shows when you last saved a backup. It turns amber when you have five or more people and no backup for a month."),
             ),
             limits = listOf(
                 "The file is not encrypted. Anyone who has it can read your tree, so keep it private.",
-                "Kinhold does not back up by itself, and Android's own cloud backup is turned off for this app. Save a file after big changes.",
+                "Copies inside the app are deleted when the app is uninstalled. Choose a folder in Automatic backup to keep copies outside the app, and move them off the phone (Google Drive, your computer) now and then, since a lost or broken phone loses a folder on it too.",
+                "Android's own cloud backup is turned off for this app, and Kinhold sends nothing over the internet.",
+                "Copies are made at most every 15 minutes, and not when nothing has changed. If your tree has many photos, each copy is large.",
             ),
         ),
         HelpPage(

@@ -54,7 +54,6 @@ class HelpGuideTest {
         val text = HelpGuide.pages.joinToString(" ") { p -> p.sections.joinToString(" ") { it.text } }.lowercase()
         assertFalse(text.contains("encrypted backup"))
         assertFalse(text.contains("syncs"))
-        assertFalse(text.contains("automatic backup"))
     }
 
     @Test

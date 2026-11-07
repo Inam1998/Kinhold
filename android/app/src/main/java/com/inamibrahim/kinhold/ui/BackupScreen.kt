@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.inamibrahim.kinhold.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -5,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -79,6 +83,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
         }
     }
 
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) vm.setAutoFolder(uri) }
     val gedcomSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) {
             vm.exportGedcom(uri) { result ->
@@ -109,6 +114,56 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                         color = if (isError) Palette.Danger else Palette.Accent,
                         modifier = Modifier.padding(20.dp),
                     )
+                }
+            }
+
+            AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ToneIcon(Icons.Filled.Refresh, Tones.Teal, 40.dp)
+                        Text("Automatic backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
+                    }
+                    Text(
+                        "Kinhold saves a copy by itself shortly after you change your tree, and when you leave the app. " +
+                            "Copies are kept inside the app, and also in a folder you choose, which keeps your tree even if the app is uninstalled.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
+                        vm.lastAutoBackup?.let { "Last automatic copy: ${describeAge(it, System.currentTimeMillis())}" } ?: "No automatic copy yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.Accent,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    if (vm.autoFolderUri != null) {
+                        Text("Folder: ${vm.autoFolderName ?: "chosen"}", style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.padding(top = 4.dp))
+                    } else {
+                        Text(
+                            "No folder chosen yet. Until you choose one, the copies are only inside the app, and uninstalling the app deletes them.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Tones.Amber,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    vm.autoError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(top = 8.dp)) }
+                    FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DialogButton(if (vm.autoFolderUri == null) "Choose a folder" else "Change folder", { folderPicker.launch(null) }, kind = ButtonKind.Primary)
+                        DialogButton("Back up now", { vm.autoBackupNow() }, kind = ButtonKind.Tonal, enabled = peopleCount > 0)
+                        if (vm.autoFolderUri != null) DialogButton("Stop using the folder", { vm.clearAutoFolder() }, kind = ButtonKind.Neutral)
+                        DialogButton(
+                            "Restore the latest copy",
+                            {
+                                vm.latestAutoCopy { result ->
+                                    result.fold(
+                                        { found -> if (found != null) pending = found.first else message = "There is no automatic copy inside the app yet." to true },
+                                        { message = (it.message ?: "The automatic copy could not be read.") to true },
+                                    )
+                                }
+                            },
+                            kind = ButtonKind.Neutral,
+                        )
+                    }
                 }
             }
 
