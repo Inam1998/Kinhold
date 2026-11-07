@@ -27,6 +27,8 @@ class TreeStats(
     val topPlaces: List<Pair<String, Int>>,
     /** Births per decade, in time order, e.g. 1950 to 12 for the 1950s. */
     val birthsByDecade: List<Pair<Int, Int>>,
+    /** How many separate groups the tree is in (people not linked to each other through parents, children or partners). */
+    val groups: Int = 1,
 ) {
     companion object {
         fun of(family: Family, thisYear: Int): TreeStats {
@@ -71,6 +73,7 @@ class TreeStats(
                 mostChildren = most,
                 topSurnames = top(surnames), topPlaces = top(places),
                 birthsByDecade = decades.entries.map { it.key to it.value },
+                groups = TreeGroups.of(family).size,
             )
         }
 

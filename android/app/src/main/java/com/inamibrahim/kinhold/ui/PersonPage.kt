@@ -104,7 +104,7 @@ fun PersonPageScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
                 ActionTile("Link person", Icons.Filled.Add, { linkNotice = null; choosingLinkType = true }, Modifier.weight(1f), tone = Tones.Violet)
-                ActionTile("Share branch", Icons.Filled.Share, onShare, Modifier.weight(1f), tone = Tones.Teal)
+                ActionTile("Share", Icons.Filled.Share, onShare, Modifier.weight(1f), tone = Tones.Teal)
             }
             linkNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Accent, modifier = Modifier.padding(start = 24.dp, end = 20.dp, bottom = 4.dp)) }
             val context = LocalContext.current
@@ -240,11 +240,47 @@ fun PersonPageScreen(
             exclude = remember(family, person.id, type) { LinkRules.excluded(family, person.id, type) },
         )
     }
-    if (type != null && other != null) {
+    // After choosing the kind of link for a child, a person with partners is asked whether the child is also the partner's.
+    var childKindName by rememberSaveable { mutableStateOf<String?>(null) }
+    val childKind = childKindName?.let { n -> com.inamibrahim.kinhold.model.LinkKind.entries.firstOrNull { it.name == n } }
+    if (type != null && other != null && childKind == null) {
         // Which kind of parent link it is: for a parent the chosen person is the parent, for a child the chosen person is the child.
         val child = if (type == LinkType.Parent) person else family.person(other)
         val parent = if (type == LinkType.Parent) family.person(other) else person
-        LinkKindDialog(child, parent, com.inamibrahim.kinhold.model.LinkKind.Birth, { finishLink(other, type, it) }, { linkType = null; linkOther = null })
+        val spouses = family.spousesInOrder(person.id)
+        LinkKindDialog(
+            child, parent, com.inamibrahim.kinhold.model.LinkKind.Birth,
+            { kind -> if (type == LinkType.Child && spouses.isNotEmpty()) childKindName = kind.name else finishLink(other, type, kind) },
+            { linkType = null; linkOther = null },
+        )
+    }
+    if (type == LinkType.Child && other != null && childKind != null) {
+        val child = family.person(other)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { childKindName = null; linkType = null; linkOther = null },
+            containerColor = Palette.Surface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            title = { Text("Who is the other parent of ${child.nameWithYears()}?", color = Palette.Text) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (spouse in family.spousesInOrder(person.id)) {
+                        DialogButton(
+                            spouse.nameWithYears(),
+                            {
+                                finishLink(other, LinkType.Child, childKind)
+                                // The child becomes the partner's child too. If the rules refuse that (for example four parents already), say so.
+                                vm.linkExisting(spouse.id, other, LinkType.Child, childKind) { r -> r.exceptionOrNull()?.let { linkNotice = "${child.name} was linked to ${person.name}. ${it.message}" } }
+                                childKindName = null
+                            },
+                            Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.Person,
+                        )
+                    }
+                    DialogButton("Only ${person.name}", { finishLink(other, LinkType.Child, childKind); childKindName = null }, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { DialogButton("Cancel", { childKindName = null; linkType = null; linkOther = null }, kind = ButtonKind.Neutral) },
+        )
     }
 
     removing?.let { r ->
@@ -357,8 +393,8 @@ private fun LinkTypeDialog(person: Person, onPick: (LinkType) -> Unit, onDismiss
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Choose who they are to ${person.name}. You pick the person next.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
-                DialogButton("A parent of ${person.name}", { onPick(LinkType.Parent) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.KeyboardArrowUp)
-                DialogButton("A child of ${person.name}", { onPick(LinkType.Child) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.KeyboardArrowDown)
+                DialogButton("A parent of ${person.name}", { onPick(LinkType.Parent) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = FamilyIcons.Parent)
+                DialogButton("A child of ${person.name}", { onPick(LinkType.Child) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = FamilyIcons.Child)
                 DialogButton("A spouse or partner", { onPick(LinkType.Spouse) }, Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, icon = Icons.Filled.Favorite)
             }
         },

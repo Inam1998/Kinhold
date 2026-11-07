@@ -97,7 +97,7 @@ sealed interface Screen {
     data class Person(val id: Int) : Screen
 
     /** Choose and save a share file for the branch from one person. */
-    data class Share(val id: Int) : Screen
+    data class Share(val id: Int, val fromBackup: Boolean = false) : Screen
 
     /** Review a file being merged into the tree. */
     data object Merge : Screen
@@ -122,7 +122,7 @@ private val ScreenSaver = Saver<Screen, String>(
             is Screen.Related -> "relation|${s.first}|${s.second}"
             is Screen.LockSetup -> "lock|${s.mode.name}"
             is Screen.Person -> "person|${s.id}"
-            is Screen.Share -> "share|${s.id}"
+            is Screen.Share -> "share|${s.id}" + if (s.fromBackup) "|b" else ""
             Screen.Merge -> "merge"
             is Screen.Form ->"form|${s.editing ?: ""}|" + when (val r = s.relation) {
                 null -> ""
@@ -159,7 +159,7 @@ private val ScreenSaver = Saver<Screen, String>(
         } else if (text == "merge") {
             Screen.Merge
         } else if (text.startsWith("share|")) {
-            text.substringAfter("|").toIntOrNull()?.let { Screen.Share(it) } ?: Screen.Tree
+            text.split("|").getOrNull(1)?.toIntOrNull()?.let { Screen.Share(it, text.endsWith("|b")) } ?: Screen.Tree
         } else if (text.startsWith("person|")) {
             text.substringAfter("|").toIntOrNull()?.let { Screen.Person(it) } ?: Screen.Tree
         } else if (!text.startsWith("form|")) {
@@ -271,8 +271,8 @@ private fun KinholdContent(vm: KinholdViewModel) {
                 items = listOfNotNull(
                     // Buying is not built yet, so the Pro page is offered in debug builds only.
                     if (AppSettings.debuggable) MoreItem(Icons.Filled.Star, Tones.Amber, "Kinhold Pro", "What Pro changes and what is always free") { screen = Screen.Pro } else null,
-                    MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Save, restore, merge and import") { screen = Screen.Backup },
-                    MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = Screen.Related(firstFocus, focusId) },
+                    MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Back up, share with a relative, open a file, GEDCOM") { screen = Screen.Backup },
+                    MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = relatedStart(family, firstFocus, focusId) },
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
                     MoreItem(Icons.Filled.Info, Tones.Sky, "Tree statistics", "Counts, notable people, common surnames and places") { if (family.size > 0) screen = Screen.Stats },
                     MoreItem(Icons.Filled.Check, Tones.Teal, "Checks and duplicates", "Impossible dates, and people entered twice") { screen = Screen.Checks },
@@ -338,9 +338,11 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Share -> {
             val shown = (target as Screen.Share).id
-            BackHandler { screen = Screen.Person(shown) }
+            // Opened from Details it goes back to Details; opened from Backup and sharing it goes back there.
+            val backTo: Screen = if ((target as Screen.Share).fromBackup) Screen.Backup else Screen.Person(shown)
+            BackHandler { screen = backTo }
             if (shown in family) {
-                ShareScreen(vm, family, family.person(shown), onBack = { screen = Screen.Person(shown) })
+                ShareScreen(vm, family, family.person(shown), onBack = { screen = backTo })
             } else {
                 screen = Screen.Tree
             }
@@ -378,7 +380,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Backup -> {
             BackHandler { screen = Screen.More }
-            BackupScreen(vm = vm, peopleCount = family.size, scroll = scrolls.scroll("backup"), onBack = { screen = Screen.More }, onMerge = { screen = Screen.Merge }, onCleared = { screen = Screen.Tree })
+            BackupScreen(vm = vm, family = family, peopleCount = family.size, scroll = scrolls.scroll("backup"), onBack = { screen = Screen.More }, onMerge = { screen = Screen.Merge }, onShare = { screen = Screen.Share(it, fromBackup = true) }, onCleared = { screen = Screen.Tree })
         }
 
         form != null -> {
@@ -587,7 +589,8 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
 private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour, Screen.Pro, Screen.Stats -> 2
+    is Screen.Share -> if (this.fromBackup) 3 else 2
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour, Screen.Pro, Screen.Stats -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -628,4 +631,20 @@ private fun Screen.key(): String = when (this) {
     is Screen.Person -> "person"
     is Screen.Share -> "share"
     is Screen.Form -> "form"
+}
+
+/**
+ * The two people the relationship finder starts on: the first (you, or the person in focus) and a second who is not the same
+ * person, so the answer is a real relationship at once. The second is the person in focus when that is someone else, otherwise
+ * their first spouse, child or parent, otherwise anyone else in the tree.
+ */
+internal fun relatedStart(family: Family, first: Int, focus: Int): Screen.Related {
+    val a = first.takeIf { it in family } ?: focus.takeIf { it in family } ?: family.people.first().id
+    val b = focus.takeIf { it in family && it != a }
+        ?: family.spousesOf(a).firstOrNull()?.id
+        ?: family.childrenOf(a).firstOrNull()?.id
+        ?: family.parentsOf(a).firstOrNull()?.id
+        ?: family.people.firstOrNull { it.id != a }?.id
+        ?: a
+    return Screen.Related(a, b)
 }

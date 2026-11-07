@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inamibrahim.kinhold.model.CustomField
+import com.inamibrahim.kinhold.model.DateExtra
+import com.inamibrahim.kinhold.model.DateQualifier
 import com.inamibrahim.kinhold.model.Event
 import com.inamibrahim.kinhold.model.EventJson
 import com.inamibrahim.kinhold.model.EventKind
@@ -62,11 +64,12 @@ fun DateFields(
     day: String,
     month: String,
     year: String,
-    onChange: (day: String, month: String, year: String) -> Unit,
+    qualifier: String,
+    onChange: (day: String, month: String, year: String, qualifier: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val parsed = PartialDate.parse(day, month, year)
+    val parsed = PartialDate.parse(day, month, year, DateExtra.qualifier(qualifier), DateExtra.endYear(qualifier))
     val shown = parsed?.text().orEmpty()
     Column(modifier) {
         Label(title, Modifier.padding(bottom = 6.dp))
@@ -91,7 +94,7 @@ fun DateFields(
     if (open) {
         DatePickerDialog(
             initial = parsed ?: PartialDate.None,
-            onDone = { d -> onChange(d.day?.toString() ?: "", d.month?.toString() ?: "", d.year?.toString() ?: ""); open = false },
+            onDone = { d -> onChange(d.day?.toString() ?: "", d.month?.toString() ?: "", d.year?.toString() ?: "", DateExtra.encode(d.qualifier, d.endYear)); open = false },
             onDismiss = { open = false },
         )
     }
@@ -104,13 +107,20 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
     var year by rememberSaveable { mutableStateOf(initial.year?.toString() ?: "") }
     var month by rememberSaveable { mutableStateOf(initial.month ?: 0) }
     var day by rememberSaveable { mutableStateOf(initial.day ?: 0) }
+    var qualKey by rememberSaveable { mutableStateOf(initial.qualifier.key) }
+    var endYear by rememberSaveable { mutableStateOf(initial.endYear?.toString() ?: "") }
     val y = year.toIntOrNull()
     val canMonth = y != null
     if (month != 0 && !canMonth) month = 0
     val maxDay = if (month in 1..12) DAYS_IN_MONTH[month - 1] else 0
     if (day > maxDay) day = 0
     var hijri by rememberSaveable { mutableStateOf(false) }
-    val shown = PartialDate(y, month.takeIf { it > 0 }, day.takeIf { it > 0 })
+    // A qualifier needs a year; "between" needs an end year that is not before the start.
+    val qualifier = if (y == null) DateQualifier.Exact else DateQualifier.fromKey(qualKey) ?: DateQualifier.Exact
+    val endY = endYear.toIntOrNull()
+    val chosen = PartialDate(y, month.takeIf { it > 0 }, day.takeIf { it > 0 }, qualifier, if (qualifier == DateQualifier.Between) endY else null)
+    val canFinish = chosen.isValid && (qualifier != DateQualifier.Between || endY != null)
+    val shown = chosen
     val preview = shown.text().ifEmpty { "No date" }
     if (hijri) HijriPickerDialog({ onDone(it) }, { hijri = false })
 
@@ -146,8 +156,18 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
                         for (d in 1..maxDay) PickChip("$d", day == d, true, round = true) { day = if (day == d) 0 else d }
                     }
                 }
+                Label("How sure", Modifier.padding(top = 6.dp))
+                EqualRow(3) {
+                    for (q in DateQualifier.entries) {
+                        PickChip(q.label, qualifier == q, y != null, modifier = Modifier.weight(1f)) { qualKey = q.key }
+                    }
+                }
+                if (qualifier == DateQualifier.Between) {
+                    Field("Until year (for example 1955)", endYear, { endYear = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number)
+                    if (!canFinish) Text("The end year must be the same as or later than the first year.", style = MaterialTheme.typography.bodySmall, color = Palette.Danger)
+                }
                 Text(
-                    "Every part is optional. Touch a chosen month or day again to clear it.",
+                    "Every part is optional. Touch a chosen month or day again to clear it. About, before, after and between are for dates you are not sure of.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Palette.TextMuted,
                 )
@@ -157,7 +177,7 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DialogButton("Clear", { onDone(PartialDate.None) }, kind = ButtonKind.Danger)
                 DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
-                DialogButton("Done", { onDone(PartialDate(y, month.takeIf { it > 0 }, day.takeIf { it > 0 })) }, kind = ButtonKind.Primary)
+                DialogButton("Done", { onDone(chosen) }, kind = ButtonKind.Primary, enabled = canFinish)
             }
         },
     )
@@ -258,6 +278,7 @@ fun EventEditorScreen(
     var day by rememberSaveable { mutableStateOf(initial.date.day?.toString() ?: "") }
     var month by rememberSaveable { mutableStateOf(initial.date.month?.toString() ?: "") }
     var year by rememberSaveable { mutableStateOf(initial.date.year?.toString() ?: "") }
+    var dateQual by rememberSaveable { mutableStateOf(DateExtra.encode(initial.date.qualifier, initial.date.endYear)) }
     var place by rememberSaveable { mutableStateOf(initial.place) }
     var note by rememberSaveable { mutableStateOf(initial.note) }
     var sourcesJson by rememberSaveable { mutableStateOf(EventJson.sources(initial.sources).toString()) }
@@ -269,7 +290,7 @@ fun EventEditorScreen(
     val kinds = (if (forCouple) EventKind.forCouple else EventKind.forPerson + EventKind.Custom).let {
         if (initial.kind in it) it else it + initial.kind
     }
-    val date = PartialDate.parse(day, month, year)
+    val date = PartialDate.parse(day, month, year, DateExtra.qualifier(dateQual), DateExtra.endYear(dateQual))
     val problem = when {
         date == null -> "That is not a real date. Check the day, month and year (a month needs a year, and a day needs a month)."
         kind == EventKind.Custom && detail.isBlank() -> "Give this event a name."
@@ -320,7 +341,7 @@ fun EventEditorScreen(
                 )
             }
             Field(detailLabel(kind), detail, { detail = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
-            DateFields("Date (any part can be left empty)", day, month, year, { d, m, y -> day = d; month = m; year = y }, Modifier.padding(top = 14.dp))
+            DateFields("Date (any part can be left empty)", day, month, year, dateQual, { d, m, y, q -> day = d; month = m; year = y; dateQual = q }, Modifier.padding(top = 14.dp))
             PlaceField("Place", place, { place = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
             Field("Notes", note, { note = it }, Modifier.fillMaxWidth().padding(top = 14.dp), singleLine = false)
 

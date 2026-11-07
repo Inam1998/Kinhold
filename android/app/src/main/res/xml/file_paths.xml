@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="camera" path="camera/" />
+    <!-- A file made to be handed to the system share sheet; it is removed again after half an hour. -->
+    <cache-path name="outgoing" path="outgoing/" />
 </paths>

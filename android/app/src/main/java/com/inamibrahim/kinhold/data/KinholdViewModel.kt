@@ -217,7 +217,7 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Writes the whole tree to the file the person chose. [onResult] gets the number of people saved, or the error. */
-    fun saveBackup(uri: Uri, onResult: (Result<Int>) -> Unit) {
+    fun saveBackup(uri: Uri, markBackedUp: Boolean = true, onResult: (Result<Int>) -> Unit) {
         viewModelScope.launch {
             val result = runCatching {
                 val text = repo.exportBackup()
@@ -227,8 +227,11 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
                         ?: throw IOException("Could not open the file to write to.")
                     out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
                 }
-                prefs.edit { putLong(LAST_BACKUP, System.currentTimeMillis()) }
-                lastManualBackup = System.currentTimeMillis()
+                // A copy handed to the share sheet is not counted as a backup: Kinhold cannot know where it went.
+                if (markBackedUp) {
+                    prefs.edit { putLong(LAST_BACKUP, System.currentTimeMillis()) }
+                    lastManualBackup = System.currentTimeMillis()
+                }
                 count
             }
             onResult(result)
@@ -337,15 +340,20 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     fun startMerge(uri: Uri, onResult: (Result<MergeSession>) -> Unit) {
         viewModelScope.launch {
             val result = runCatching {
+                var kind = IncomingKind.Gedcom
                 val data = withContext(Dispatchers.IO) {
                     val input = getApplication<Application>().contentResolver.openInputStream(uri)
                         ?: throw IOException("Could not open that file.")
                     val bytes = input.use { it.readAtMost(MAX_BACKUP_BYTES) }
                         ?: throw BackupException("This file is too large to be a family tree.")
                     val first = bytes.firstOrNull { !it.toInt().toChar().isWhitespace() && it.toInt() != 0xEF && it.toInt() != 0xBB && it.toInt() != 0xBF }
-                    if (first?.toInt()?.toChar() == '{') BackupCodec.decode(bytes.toString(Charsets.UTF_8)) else Gedcom.read(bytes).data
+                    if (first?.toInt()?.toChar() == '{') {
+                        BackupCodec.decode(bytes.toString(Charsets.UTF_8)).also { kind = if (it.rootUid.isNotEmpty()) IncomingKind.Share else IncomingKind.Backup }
+                    } else {
+                        Gedcom.read(bytes).data
+                    }
                 }
-                MergeSession(data, repo.planMerge(data)).also { mergeSession = it }
+                MergeSession(data, repo.planMerge(data), kind).also { mergeSession = it }
             }
             onResult(result)
         }
@@ -514,5 +522,8 @@ private fun InputStream.readAtMost(limit: Int): ByteArray? {
     return out.toByteArray()
 }
 
+/** What kind of file was opened for merging: a share file from a relative, a whole-tree backup, or a GEDCOM file from another program. */
+enum class IncomingKind { Share, Backup, Gedcom }
+
 /** A file read for merging and its comparison with the tree on this phone. */
-class MergeSession(val data: BackupData, val plan: Merge)
+class MergeSession(val data: BackupData, val plan: Merge, val kind: IncomingKind = IncomingKind.Backup)

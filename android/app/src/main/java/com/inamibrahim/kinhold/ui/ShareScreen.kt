@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
@@ -51,6 +52,7 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
     var photos by rememberSaveable { mutableStateOf(true) }
     var contact by rememberSaveable { mutableStateOf(false) }
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val scope = ShareScope(ShareDirection.entries[direction], generations, spouses, excludeLiving, photos, contact)
     val count = remember(family, person.id, direction, generations, spouses, excludeLiving) {
@@ -80,12 +82,20 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                 .padding(horizontal = 20.dp),
         ) {
             ScreenHeader("Share", "Share from ${person.name}", Modifier.padding(top = 12.dp, bottom = 16.dp), onBack = onBack)
-            Text(
-                "Makes a file with this person and the relatives you choose. A relative can open it in their Kinhold with " +
-                    "\"Merge a shared file\" and get only the people they do not have, and be asked about the rest.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.TextMuted,
-            )
+            AppCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("How sharing works", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                    for ((n, step) in listOf(
+                        "Choose which relatives of ${person.name} go in the file, below.",
+                        "Send the file to your relative by WhatsApp, email or any app.",
+                        "They open Kinhold, then More, then Backup and sharing, then Open a file from a relative.",
+                        "Kinhold shows them who they already have and who is new, and adds only the new people. Nothing is removed from their tree.",
+                    ).withIndex()) {
+                        Text("${n + 1}.  $step", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+                    }
+                    Text("Your own tree is not changed by sharing.", style = MaterialTheme.typography.bodySmall, color = Palette.Accent)
+                }
+            }
             message?.let { (text, isError) ->
                 AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Text(text, style = MaterialTheme.typography.bodyLarge, color = if (isError) Palette.Danger else Palette.Accent, modifier = Modifier.padding(20.dp))
@@ -129,10 +139,26 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
                     )
-                    PrimaryButton(
-                        "Save the share file",
-                        { saver.launch("kinhold-share-${person.name.replace(' ', '-')}-${LocalDate.now()}.json") },
+                    DialogButton(
+                        "Send it to a relative",
+                        {
+                            val p = SendFile.prepare(context, "kinhold-share-${person.name}-${LocalDate.now()}.json", "application/json", "Kinhold share file")
+                            vm.exportShare(p.uri, person.id, scope) { result ->
+                                result.fold(
+                                    { SendFile.send(context, p); message = "Share file ready with $it ${if (it == 1) "person" else "people"}. Choose where to send it." to false },
+                                    { message = (it.message ?: "The file could not be made.") to true },
+                                )
+                            }
+                        },
                         Modifier.fillMaxWidth(),
+                        kind = ButtonKind.Primary,
+                        icon = Icons.Filled.Send,
+                    )
+                    DialogButton(
+                        "Save the file on this phone",
+                        { saver.launch("kinhold-share-${person.name.replace(' ', '-')}-${LocalDate.now()}.json") },
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        kind = ButtonKind.Tonal,
                     )
                 }
             }
@@ -151,6 +177,10 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         DialogButton("Save as PDF", { pdfSaver.launch("kinhold-tree-${person.name.replace(' ', '-')}.pdf") }, kind = ButtonKind.Tonal)
                         DialogButton("Save as picture", { pngSaver.launch("kinhold-tree-${person.name.replace(' ', '-')}.png") }, kind = ButtonKind.Tonal)
+                        DialogButton("Send the picture", {
+                            val p = SendFile.prepare(context, "kinhold-tree-${person.name}.png", "image/png", "Family tree of ${person.name}")
+                            vm.exportChart(p.uri, person.id, false) { r -> r.fold({ SendFile.send(context, p) }, { message = (it.message ?: "The chart could not be made.") to true }) }
+                        }, kind = ButtonKind.Tonal, icon = Icons.Filled.Send)
                     }
                 }
             }

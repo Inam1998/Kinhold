@@ -1,5 +1,6 @@
 package com.inamibrahim.kinhold
 
+import com.inamibrahim.kinhold.model.DateQualifier
 import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupException
 import com.inamibrahim.kinhold.model.CoupleInfo
@@ -160,7 +161,7 @@ class EventsTest {
         assertEquals(sampleDetails.events.getValue(1), data.details.events.getValue(1))
         assertEquals(sampleDetails.sources, data.details.sources)
         assertEquals(sampleDetails.couples, data.details.couples)
-        assertEquals(8, BackupCodec.VERSION)
+        assertEquals(9, BackupCodec.VERSION)
     }
 
     @Test
@@ -320,7 +321,7 @@ class EventsTest {
         assertEquals(PartialDate(1801, 2, 3), john.birthDate)
         val events = r.data.details.events.getValue(john.id)
         assertEquals(listOf("Baptism", "Military service", "Local honour", "Bar Mitzvah", "Occupation: Smith"), events.map { it.title() })
-        assertEquals(PartialDate(1801, 3), events[0].date)
+        assertEquals(PartialDate(1801, 3, null, com.inamibrahim.kinhold.model.DateQualifier.About), events[0].date)
         assertEquals("St Mary's", events[0].place)
         assertEquals("Baptised at home", events[0].note)
         assertEquals(EventKind.Military, events[1].kind)
@@ -332,8 +333,8 @@ class EventsTest {
         val couple = r.data.details.couples.values.single()
         assertEquals(listOf(EventKind.Marriage, EventKind.Divorce), couple.map { it.kind })
         assertEquals(PartialDate(1825, 7, 4), couple[0].date)
-        // ABT MAR 1801 was simplified; the SSN line and the family-level citation could not be kept.
-        assertEquals(1, r.report.datesSimplified)
+        // ABT MAR 1801 is kept as an "about" date, so nothing was simplified; the SSN line and the family-level citation could not be kept.
+        assertEquals(0, r.report.datesSimplified)
         assertEquals(1, r.report.ignoredEvents)
         assertEquals(1, r.report.ignoredSources)
         assertEquals(7, r.report.eventsKept)
@@ -357,8 +358,17 @@ class EventsTest {
         assertEquals(PartialDate(1950, 1, null) to false, parse("January 1950"))
         assertEquals(PartialDate(1950) to false, parse("1950"))
         assertEquals(PartialDate(1950) to false, parse("1950/51"))
-        assertEquals(PartialDate(1950, 1, null) to true, parse("ABT JAN 1950"))
-        assertEquals(PartialDate(1900) to true, parse("BET 1900 AND 1910"))
+        assertEquals(PartialDate(1950, 1, null, DateQualifier.About) to false, parse("ABT JAN 1950"))
+        assertEquals(PartialDate(1950, null, null, DateQualifier.About) to false, parse("Est. 1950"))
+        assertEquals(PartialDate(1950, null, null, DateQualifier.About) to false, parse("CAL 1950"))
+        assertEquals(PartialDate(1990, null, null, DateQualifier.Before) to false, parse("BEF 1990"))
+        assertEquals(PartialDate(1990, 5, 3, DateQualifier.After) to false, parse("aft 3 May 1990"))
+        assertEquals(PartialDate(1900, null, null, DateQualifier.Between, 1910) to false, parse("BET 1900 AND 1910"))
+        assertEquals(PartialDate(1945, null, null, DateQualifier.Between, 1981) to false, parse("FROM 1945 TO 1981"))
+        // An end month or day is not kept, which counts as simplified; the same year at both ends is just "about".
+        assertEquals(PartialDate(1900, 3, null, DateQualifier.Between, 1910) to true, parse("BET MAR 1900 AND 5 JUN 1910"))
+        assertEquals(PartialDate(1850, null, null, DateQualifier.About) to false, parse("BET 1850 AND 1850"))
+        assertEquals(PartialDate(1900, null, null, DateQualifier.About) to true, parse("INT 1900 (about 1900)"))
         assertEquals(PartialDate(1950, 2, null) to true, parse("30 FEB 1950")) // no such day: the month is kept
         assertEquals(PartialDate(1950) to true, parse("12 1950"))
         assertNull(parse("Unknown"))

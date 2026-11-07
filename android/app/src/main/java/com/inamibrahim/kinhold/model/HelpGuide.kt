@@ -30,10 +30,12 @@ object HelpGuide {
                 HelpSection("Quick add", "The Quick add button on the tree asks only for a name. Choose Child, Spouse, Parent or Sibling, type the name and tap Add; the box stays open so you can add several people. A name with two or more words uses the last word as the surname. You can fill in dates and other details later with Edit."),
                 HelpSection("Already have a tree somewhere else?", "Choose Import a GEDCOM file on the start screen. See \"Moving a tree in and out\"."),
                 HelpSection("Just looking around?", "The start screen can fill the tree with an invented family. They are ordinary entries. A bar on the tree offers Clear sample, and Backup and sharing has Delete the whole tree, so you can start your own tree. Clear sample cannot be undone (sample people are invented, so no copy is kept); Delete the whole tree keeps a copy so it can be undone."),
+                HelpSection("The welcome tour", "The first time you open Kinhold, five short pages say what it is: private, free to use and made for real families. Swipe or tap Next, or Skip. You can read it again any time from More, then Welcome tour. It is only an introduction: nothing in it changes your tree or your settings."),
+                HelpSection("What the buttons on the card mean", "Parent, Sibling and Child use small pictures: a person with an arrow up is a parent, a person with an arrow down is a child, and two people side by side are a sibling (the button appears once the person has a parent recorded). Spouse is a heart."),
             ),
             limits = listOf(
                 "A person can have up to four parents recorded: birth, adoptive, foster and step.",
-                "Only a year is needed for a date. A day and month are optional, and some programs' \"about\" and \"between\" dates are not kept as such.",
+                "Only a year is needed for a date. A day and month are optional. A date can also be marked about, before, after or between two years (see \"Adding and editing people\").",
             ),
         ),
         HelpPage(
@@ -60,6 +62,7 @@ object HelpGuide {
                 HelpSection("What you can fill in", "First names, surname, sex, the date of birth and of death (a year is enough, the day and month are optional), the place of each, and notes. Only a name is required. Baptisms, jobs, moves, marriages and the like go in events, see \"Events, marriages and sources\"."),
                 HelpSection("Places", "While you type a place of birth, a place of death or the place of an event, places already used in your tree that match are offered under the box. Tap one to fill it in, so the same place is spelled the same way every time. \"Lahore\" and \"lahore\" count as one place, and the spelling used most often is the one offered."),
                 HelpSection("Dates", "Leave any part empty if you do not know it. A month needs a year and a day needs a month, and 30 February is refused. The death date cannot be before the birth date."),
+                HelpSection("Dates you are not sure of", "In the date picker, under How sure, choose About, Before, After or Between. Between asks for a second year, \"until\". They show in words (\"about 1850\", \"between 1850 and 1855\"), on tree cards as c. 1850, bef. 1850, aft. 1850 and 1850–1855, and travel in backups and GEDCOM files. The picker needs a year before it offers them."),
                 HelpSection("Changing someone", "Choose Edit on the card at the bottom of the tree."),
                 HelpSection("Phone, email, address and map pin", "In Edit you can add a phone number, an email address, an address and a map pin. On the Details page, Call, Text, WhatsApp, Email and Map open your phone's own apps, and Map shows the pin (or searches the address) in your maps app. To save a pin, tap Choose on map in Edit, press and hold the place in your maps app, tap the numbers that appear (this copies them), then come back and tap Use it. Paste does the same from the clipboard. A short Google Maps link (maps.app.goo.gl) holds no numbers and is not accepted."),
                 HelpSection("Your own facts", "Under Your own facts in Edit, add as many label and value pairs as you like, such as Blood group, Nickname or Village. They show on the Details page."),
@@ -76,7 +79,7 @@ object HelpGuide {
             limits = listOf(
                 "Different people can share a name. Find shows whose child each one is.",
                 "Place suggestions come from the birth and death places of the people in your tree (not from event places or addresses), at most the 2,000 most used, and only places you have typed before are offered: Kinhold has no list of the world's places and looks nothing up.",
-                "Linking works one link at a time: linking a child to one parent does not also link their other parent, and a sibling is made by linking the same parents. There is no undo button for a link, but Unlink removes it again (a copy of the tree is only kept for restores, imports and merges).",
+                "Linking works one link at a time. When you link a child to a person who has a partner, Kinhold asks who the other parent is and links both; otherwise a child linked to one parent is not also linked to the other. A sibling is made by linking the same parents. There is no undo button for a link, but Unlink removes it again (a copy of the tree is only kept for restores, imports and merges).",
                 "Spouses are placed by marriage date where you have recorded one, then by birth year, then by the order they were added.",
                 "Kinhold asks for no permission to call or message: it only hands the number to your phone's apps. WhatsApp needs the number with its country code, such as +92, and only works if WhatsApp is installed.",
                 "A pin is two numbers saved by you. Kinhold does not look addresses up, show a map inside the app or work out distances, and short Google links (maps.app.goo.gl) cannot be read: open them first and copy the numbers.",
@@ -102,7 +105,7 @@ object HelpGuide {
             limits = listOf(
                 "A person or a couple can have up to 500 events, and each event or person up to 50 sources. Long text is cut: about 5,000 characters in a note.",
                 "Sources are plain text. You cannot attach a scan, photo or document to them.",
-                "Dates cannot say \"about\" or \"between\"; put that in the notes.",
+                "A date can be marked about, before, after or between two years, but only the years of a \"between\" date are kept, not its months and days. Other doubts, such as \"probably\", go in the notes.",
                 "Events are shown on the Details page and in Edit, not on the tree cards. Birth and death stay as the fields on the form, and appear in the timeline on the Details page beside the events.",
                 "An age in the timeline is exact only when both the birth date and the event date have a day and month; otherwise it says About, and it can be a year out. A child with no birth year is not shown in the timeline (they are still listed under Children).",
                 "Events are ordered by date; events with no date come last.",
@@ -114,8 +117,10 @@ object HelpGuide {
             title = "Sharing with relatives",
             summary = "Send part of your tree to a relative, or merge theirs into yours.",
             sections = listOf(
-                HelpSection("Sending a branch", "Open Details on a person, then choose Share branch. Pick which relatives (ancestors, descendants or both), how many generations, and whether to include spouses and photos. Save the file and send it to your relative by any app, such as WhatsApp or email."),
-                HelpSection("Merging a file you received", "Open Backup, then Choose a file to merge. Kinhold compares it with your tree and shows you what it found before anything changes. Nothing in your own tree is replaced unless you choose it."),
+                HelpSection("Which one do I need?", "Open More, then Backup and sharing. Keep my own tree safe: the Backup and Restore cards. Send some relatives to a family member: Send part of your tree. I received a file: Open a file from a relative. Move to or from another program such as Ancestry: the GEDCOM card. The screen starts with a short guide and groups its cards under these headings."),
+                HelpSection("Sending part of your tree", "Open More, then Backup and sharing, then Send part of your tree and choose a person (or open Details on a person and choose Share). Pick which relatives (ancestors, descendants or both), how many generations, and whether to include spouses, photos and contact details. Then choose Send it to a relative to open your phone's share sheet and send the file by WhatsApp, email or any other app, or Save the file on this phone to keep it first. The chart can be sent as a picture the same way, with Send the picture."),
+                HelpSection("What your relative does", "They open Kinhold, then More, then Backup and sharing, then Open a file from a relative, and choose the file. Kinhold says what kind of file it is, shows who they already have and who is new, and asks about anything that differs. They tap Add to my tree at the bottom, and can undo it. Nothing is removed from their tree."),
+                HelpSection("Opening a file you received", "Use Open a file from a relative for a share file, a Kinhold backup or a GEDCOM file. It only ever adds: it never removes anyone, and people already in your tree are matched and not added twice. To swap your whole tree for a backup instead, use Restore from a backup."),
                 HelpSection("Is this the same person?", "People who travelled from one Kinhold to another are matched for sure. Others are suggested by name, birth year and relatives in common. A strong suggestion starts as the same person, a weaker one as a different person, and you can change either."),
                 HelpSection("Who is the main person?", "A share file records the person it was made from. When you merge it, the first card says \"This branch starts with …\". If that person is already in your tree, Kinhold shows who it matched, and you can choose someone else. If they are not in your tree, choose Attach to someone, pick a person you have and say whether the new person is their parent, child, spouse or sibling. Everyone else in the file is placed around them."),
                 HelpSection("Save a backup first", "Before a merge, an import or a restore, Kinhold offers to save a backup file of your tree. Save a backup does that and then carries on; Continue without skips it. A backup file is the safest way back if something goes wrong."),
@@ -133,7 +138,7 @@ object HelpGuide {
                 "Two people with the same name and no birth year or relatives in common are only offered as a possible match, never merged without your answer.",
                 "A person can have up to four parents. If the file would give a person a fifth, that link is skipped and you are told how many.",
                 "Matching is done again each time you merge. If you confirm a match by hand, merging an updated file later may ask you again.",
-                "Merging adds and fills in. It does not delete anyone, and it does not remove events you have that the file lacks.",
+                "Opening a file adds and fills in. It does not delete anyone, and it does not remove events you have that the file lacks.",
                 "Your choices on the review screen are not kept if you turn the phone while reviewing.",
             ),
         ),
@@ -193,12 +198,14 @@ object HelpGuide {
             sections = listOf(
                 HelpSection("What a backup is", "One file holding everyone in your tree, their photos, events and sources, and every link between them."),
                 HelpSection("Saving one", "Open Backup, then Save a backup file, and choose where it goes: Google Drive, an email to yourself, your computer. Kinhold does not need access to your files for this."),
+                HelpSection("Sending a copy", "Send a copy (Drive, email, WhatsApp) opens your phone's share sheet, so the file can go to Google Drive, an email to yourself or another app in one step. Kinhold makes the file, the app you pick receives it, and Kinhold itself sends nothing over the internet. A copy sent this way is not counted as a saved backup, because Kinhold cannot tell where it went; use Save a backup file for that."),
                 HelpSection("Automatic backup", "Kinhold also saves a copy by itself shortly after you change your tree, and when you leave the app. Open More, then Backup and sharing, then Automatic backup. Copies are kept inside the app (the newest ten, and the newest of each of the last seven days). Choose a folder there and the same copies are also written to it, which keeps your tree even if the app is uninstalled. Restore the latest copy puts back the newest copy kept inside the app."),
                 HelpSection("Reminders", "The tree screen shows when you last saved a backup. It turns amber when you have five or more people and no backup for a month."),
                 HelpSection("Starting over", "Delete the whole tree (at the bottom of Backup and sharing, and Clear sample on a sample tree) removes everyone after you confirm. Kinhold keeps a copy first, and Undo the last restore, import or delete on the same screen brings it back until the next restore, import or delete."),
             ),
             limits = listOf(
                 "The file is not encrypted. Anyone who has it can read your tree, so keep it private.",
+                "The file made for the share sheet is kept inside Kinhold for half an hour and then deleted, but the app you send it to keeps its own copy, which Kinhold cannot remove.",
                 "Copies inside the app are deleted when the app is uninstalled. Choose a folder in Automatic backup to keep copies outside the app, and move them off the phone (Google Drive, your computer) now and then, since a lost or broken phone loses a folder on it too.",
                 "Android's own cloud backup is turned off for this app, and Kinhold sends nothing over the internet.",
                 "Copies are made at most every 15 minutes, and not when nothing has changed. If your tree has many photos, each copy is large.",
@@ -229,7 +236,7 @@ object HelpGuide {
                 HelpSection("Exporting", "Open Backup, then Save as a GEDCOM file."),
             ),
             limits = listOf(
-                "Adoptive and foster links are read from and written to GEDCOM (the pedigree type); a step link is written with a type other programs may ignore. Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates such as \"about 1850\" or \"between 1800 and 1810\" keep only their first date.",
+                "Adoptive and foster links are read from and written to GEDCOM (the pedigree type); a step link is written with a type other programs may ignore. Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates marked ABT, EST, CAL, BEF, AFT, BET ... AND ... and FROM ... TO ... are kept as about, before, after and between dates; an end day or month, and a phrase in brackets, are not kept and are counted as simplified.",
                 "Not kept: photos and other files, identity numbers, church ordinances, web addresses, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
                 "Names: a suffix such as Jr. is kept at the end of the surname. A second name in the file (a married name, an alias) is kept as an own fact on the Details page, such as Married name. A person marked as dead with no date and no place gets the own fact Deceased, so they are not taken for living; their dates stay empty.",
                 "Citations for a birth or a death become sources of the person, with a note saying which.",
@@ -308,6 +315,7 @@ object HelpGuide {
                 HelpSection("Things to look at", "Open More, then Checks and duplicates. Kinhold lists data that looks impossible or unlikely: a child born before a parent, a parent who died before the child was born, a marriage before someone was born, someone who would be over 110 with no death date. Tap one to go to that person and fix it."),
                 HelpSection("Possible duplicates", "People with the same name, a birth year within one year of each other and the same sex are listed as possible duplicates, with the reason. Choose Join, keep first or Join, keep second to fold one entry into the other, or Not the same to stop asking."),
                 HelpSection("What joining does", "The entry you keep gets anything it lacks from the other: dates, places, notes, contact details, photo, events, sources, own facts, and every parent, child and partner link. The other entry is then removed. A copy of your tree is kept first, so you can use Undo in Backup and sharing."),
+                HelpSection("Separate groups", "A tree is one group when everyone is linked to everyone else through parents, children and partners. Removing a link, deleting a parent or adding someone without linking them can split it into several groups, and the tree screen only shows the group of the person in focus. Checks lists every other group (its size, and the person it opens on) so none is forgotten; tap one to open it on the tree, then use Link person on a Details page to join it back. Tree statistics shows how many groups there are."),
             ),
             limits = listOf(
                 "The checks only read your tree. Nothing is fixed for you, and a warning can be wrong: a parent who really was young, or a person who really lived past 110.",
@@ -315,6 +323,7 @@ object HelpGuide {
                 "Parents and children, spouses, and people of different sex are never offered as duplicates.",
                 "A person keeps at most four parents when joined, so an extra parent link from the removed entry is dropped.",
                 "Dates with only a year are compared by year, so a marriage and a birth in the same year are not flagged.",
+                "Groups are worked out from parent, child and partner links only, so cousins who share no recorded ancestor are separate groups. The 30 largest other groups are listed and the rest only counted.",
             ),
         ),
         HelpPage(

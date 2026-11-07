@@ -1,31 +1,101 @@
 package com.inamibrahim.kinhold.model
 
+/** How sure a date is: exact, about, before, after, or somewhere between two years. */
+enum class DateQualifier(val key: String, val label: String, val gedcom: String) {
+    Exact("exact", "Exact", ""),
+    About("about", "About", "ABT"),
+    Before("before", "Before", "BEF"),
+    After("after", "After", "AFT"),
+    Between("between", "Between", "BET");
+
+    companion object {
+        fun fromKey(key: String?): DateQualifier? = entries.firstOrNull { it.key == key }
+        fun fromOrdinal(n: Int): DateQualifier = entries.getOrElse(n) { Exact }
+    }
+}
+
+/** A date's qualifier and end year as one short text, so a form can keep them in one saved value: "" (exact), "about", "before", "after" or "between:1931". */
+object DateExtra {
+    fun encode(qualifier: DateQualifier, endYear: Int?): String = when (qualifier) {
+        DateQualifier.Exact -> ""
+        DateQualifier.Between -> "between:${endYear ?: ""}"
+        else -> qualifier.key
+    }
+
+    fun qualifier(text: String): DateQualifier = DateQualifier.fromKey(text.substringBefore(':')) ?: DateQualifier.Exact
+
+    /** The end year typed so far, as text ("" when there is none). */
+    fun endYear(text: String): String = text.substringAfter(':', "")
+}
+
 /**
  * A date where the year, the month and the day are each optional. A month needs a year and a day needs a month, so
  * "1850", "Mar 1850" and "12 Mar 1850" are all possible and nothing else. Use [normalized] to drop a month or day that
- * has nothing to hang on.
+ * has nothing to hang on. A [qualifier] says it is only about, before or after that date, or between it and the year
+ * [endYear]; an exact date (the usual case) has neither.
  */
-data class PartialDate(val year: Int? = null, val month: Int? = null, val day: Int? = null) {
+data class PartialDate(
+    val year: Int? = null,
+    val month: Int? = null,
+    val day: Int? = null,
+    val qualifier: DateQualifier = DateQualifier.Exact,
+    val endYear: Int? = null,
+) {
     val isEmpty: Boolean get() = year == null && month == null && day == null
 
     /** Whether every part that is given is in range and the parts fit together (no month without a year, and so on). */
     val isValid: Boolean
         get() = (year == null || year in 0..9999) &&
             (month == null || (year != null && month in 1..12)) &&
-            (day == null || (month != null && day in 1..MAX_DAY[month - 1]))
+            (day == null || (month != null && day in 1..MAX_DAY[month - 1])) &&
+            // An end year goes only with "between", needs a start year, and is not before it.
+            (if (qualifier == DateQualifier.Between) (endYear == null || (year != null && endYear in year..9999)) else endYear == null)
 
-    /** The same date with a month dropped if there is no year and a day dropped if there is no month. */
+    /** Whether the date is only approximate, so a worked-out age or day count is a guess. */
+    val isApproximate: Boolean get() = qualifier != DateQualifier.Exact
+
+    /** The same date with a month dropped if there is no year and a day dropped if there is no month. A qualifier needs a year. */
     fun normalized(): PartialDate {
         val m = if (year == null) null else month
         val d = if (m == null) null else day
-        return PartialDate(year, m, d)
+        return if (year == null) PartialDate(null, null, null) else PartialDate(year, m, d, qualifier, if (qualifier == DateQualifier.Between) endYear else null)
     }
 
-    /** "12 Mar 1850", "Mar 1850", "1850", or an empty string. */
-    fun text(): String = parts(MONTH_NAMES)
+    /** "12 Mar 1850", "Mar 1850", "1850", "about 1850", "before 1850", "after 1850", "between 1850 and 1855", or an empty string. */
+    fun text(): String {
+        val base = parts(MONTH_NAMES)
+        if (base.isEmpty()) return base
+        return when (qualifier) {
+            DateQualifier.Exact -> base
+            DateQualifier.About -> "about $base"
+            DateQualifier.Before -> "before $base"
+            DateQualifier.After -> "after $base"
+            DateQualifier.Between -> if (endYear != null) "between $base and $endYear" else "about $base"
+        }
+    }
 
-    /** The same in GEDCOM style: "12 MAR 1850". */
-    fun gedcom(): String = parts(MONTH_TAGS)
+    /** The same in GEDCOM style: "12 MAR 1850", "ABT 1850", "BET 1850 AND 1855". */
+    fun gedcom(): String {
+        val base = parts(MONTH_TAGS)
+        if (base.isEmpty()) return base
+        return when (qualifier) {
+            DateQualifier.Exact -> base
+            DateQualifier.Between -> if (endYear != null) "BET $base AND $endYear" else "ABT $base"
+            else -> "${qualifier.gedcom} $base"
+        }
+    }
+
+    /** Just the years, short, for a tree card: "1850", "c. 1850", "bef. 1850", "aft. 1850", "1850–1855". */
+    fun yearText(): String {
+        val y = year ?: return ""
+        return when (qualifier) {
+            DateQualifier.Exact -> "$y"
+            DateQualifier.About -> "c. $y"
+            DateQualifier.Before -> "bef. $y"
+            DateQualifier.After -> "aft. $y"
+            DateQualifier.Between -> if (endYear != null) "$y–$endYear" else "c. $y"
+        }
+    }
 
     private fun parts(names: List<String>): String = listOfNotNull(
         day?.toString(),
@@ -57,13 +127,17 @@ data class PartialDate(val year: Int? = null, val month: Int? = null, val day: I
         private val MAX_DAY = intArrayOf(31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
         /** Reads the three boxes of a form. Blank boxes are unknown parts; null means the numbers cannot be a date. */
-        fun parse(day: String, month: String, year: String): PartialDate? {
+        fun parse(day: String, month: String, year: String, qualifier: DateQualifier = DateQualifier.Exact, endYear: String = ""): PartialDate? {
             fun number(s: String): Int? = s.trim().toIntOrNull()?.takeIf { it >= 0 }
             val d = number(day)
             val m = number(month)
             val y = number(year)
-            if ((day.isNotBlank() && d == null) || (month.isNotBlank() && m == null) || (year.isNotBlank() && y == null)) return null
-            val date = PartialDate(y, m, d)
+            val e = number(endYear)
+            if ((day.isNotBlank() && d == null) || (month.isNotBlank() && m == null) || (year.isNotBlank() && y == null) || (endYear.isNotBlank() && e == null)) return null
+            // A qualifier on a date with no year means nothing, and "between" needs both years.
+            if (y == null && qualifier != DateQualifier.Exact) return PartialDate(null, null, null).takeIf { d == null && m == null }
+            if (qualifier == DateQualifier.Between && e == null) return null
+            val date = PartialDate(y, m, d, qualifier, if (qualifier == DateQualifier.Between) e else null)
             return if (date.isValid) date else null
         }
     }

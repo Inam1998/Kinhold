@@ -69,6 +69,7 @@ fun StatsScreen(family: Family, onOpen: (Int) -> Unit, scroll: androidx.compose.
                 StatCard("Records", Icons.Filled.Info, Tones.Teal) {
                     Line("With a photo", "%,d".format(s.withPhoto))
                     Line("With no dates at all", "%,d".format(s.withNoDates))
+                    Line("Separate groups", if (s.groups <= 1) "1 (all linked)" else "${s.groups} (see Checks)")
                 }
                 StatCard("Notable people", Icons.Filled.Star, Tones.Amber) {
                     s.oldest?.let { PersonLine("Born earliest", it.name, it.years(), onOpen, it.id) }

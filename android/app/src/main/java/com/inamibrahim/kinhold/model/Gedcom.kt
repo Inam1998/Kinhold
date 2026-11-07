@@ -35,8 +35,8 @@ class GedcomReport(
                 "Adding keeps everyone already there, and anyone in both will appear twice."
         }
         if (datesSimplified > 0) {
-            lines += "$datesSimplified ${if (datesSimplified == 1) "date is" else "dates are"} given as \"about\", a range or a phrase. " +
-                "Only the first date in each is kept."
+            lines += "$datesSimplified ${if (datesSimplified == 1) "date was" else "dates were"} simplified: a phrase, or the day or month at the " +
+                "end of a range, cannot be kept. The first date in each is kept."
         }
         fun count(n: Int, one: String, many: String) = "$n ${if (n == 1) one else many}"
         if (eventsKept > 0 || sourcesKept > 0) {
@@ -205,6 +205,10 @@ object Gedcom {
                 email = node.child("EMAIL")?.value?.trim().orEmpty().take(200),
                 lat = pin?.lat,
                 lng = pin?.lng,
+                birthQualifier = birthDate.qualifier,
+                birthEndYear = birthDate.endYear,
+                deathQualifier = deathDate.qualifier,
+                deathEndYear = deathDate.endYear,
             )
             val events = ArrayList<Event>()
             for (detail in node.children) {
@@ -315,6 +319,38 @@ object Gedcom {
      */
     internal fun parseDate(raw: String?): Pair<PartialDate, Boolean>? {
         val text = raw?.trim().orEmpty()
+        if (text.isEmpty() || BC.containsMatchIn(text)) return null
+        // "BET 1800 AND 1810" and "FROM 1800 TO 1810": a date and the year it runs to. The end year is kept; an end month or day is not.
+        RANGE_DATE.matchEntire(text)?.let { m ->
+            val start = parseSingle(m.groupValues[1]) ?: return parseSingle(text)
+            val end = parseSingle(m.groupValues[2])
+            val endYear = end?.first?.year
+            val startYear = start.first.year!!
+            return when {
+                endYear == null -> start.first to true
+                endYear > startYear -> start.first.copy(qualifier = DateQualifier.Between, endYear = endYear) to (start.second || end.second || end.first.month != null)
+                else -> start.first.copy(qualifier = DateQualifier.About) to (start.second || end.second || end.first.month != null)
+            }
+        }
+        // "ABT 1850", "BEF 1850", "AFT 1850" and the like keep their qualifier; a phrase in brackets after "INT" is dropped.
+        QUALIFIED_DATE.matchEntire(text)?.let { m ->
+            val qualifier = when (m.groupValues[1].uppercase()) {
+                "BEF", "BEFORE" -> DateQualifier.Before
+                "AFT", "AFTER" -> DateQualifier.After
+                else -> DateQualifier.About
+            }
+            val body = m.groupValues[2]
+            val one = parseSingle(body.substringBefore('(').trim()) ?: return parseSingle(text)
+            return one.first.copy(qualifier = qualifier) to (one.second || (body.contains('(') && m.groupValues[1].equals("INT", ignoreCase = true)))
+        }
+        return parseSingle(text)
+    }
+
+    private val RANGE_DATE = Regex("""^(?:BET|BETWEEN|FROM)\s+(.+?)\s+(?:AND|TO)\s+(.+)$""", RegexOption.IGNORE_CASE)
+    private val QUALIFIED_DATE = Regex("""^(ABT|ABOUT|CAL|CALC|EST|ESTIMATED|BEF|BEFORE|AFT|AFTER|INT)\b\.?\s*(.+)$""", RegexOption.IGNORE_CASE)
+
+    /** One plain date, or the first date found in a phrase (then it counts as simplified). Null when there is no year. */
+    private fun parseSingle(text: String): Pair<PartialDate, Boolean>? {
         if (text.isEmpty() || BC.containsMatchIn(text)) return null
         val exact = EXACT_DATE.matchEntire(text)
         val m = exact ?: LOOSE_DATE.find(text) ?: return null

@@ -36,6 +36,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AppSettings.load(this)
         AppLock.load(this)
+        // Files made for the share sheet in an earlier run are removed, so a copy of the tree never lingers in the cache.
+        com.inamibrahim.kinhold.ui.SendFile.clean(this, 30L * 60_000L)
         setContent {
             val mode = AppSettings.mode
             val dark = isDark(mode, isSystemInDarkTheme())

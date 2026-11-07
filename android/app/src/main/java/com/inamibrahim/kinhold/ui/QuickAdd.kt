@@ -131,10 +131,10 @@ internal fun siblingRelation(family: Family, personId: Int): Relation.ChildOf? {
 }
 
 private fun QuickKind.icon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
-    QuickKind.Child -> Icons.Filled.KeyboardArrowDown
+    QuickKind.Child -> FamilyIcons.Child
     QuickKind.Spouse -> Icons.Filled.Favorite
-    QuickKind.Parent -> Icons.Filled.KeyboardArrowUp
-    QuickKind.Sibling -> Icons.AutoMirrored.Filled.ArrowForward
+    QuickKind.Parent -> FamilyIcons.Parent
+    QuickKind.Sibling -> FamilyIcons.Sibling
 }
 
 private fun QuickKind.tone(): androidx.compose.ui.graphics.Color = when (this) {

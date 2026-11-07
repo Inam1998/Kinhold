@@ -34,7 +34,7 @@ class BackupException(message: String) : Exception(message)
  */
 object BackupCodec {
     const val FORMAT = "kinhold-backup"
-    const val VERSION = 8
+    const val VERSION = 9
     private const val MAX_PEOPLE = 200_000
     private const val MAX_PHOTO_BYTES = 3_000_000
     private const val NOT_A_BACKUP = "This file is not a Kinhold backup."
@@ -72,6 +72,14 @@ object BackupCodec {
             p.birthDay?.let { o.put("birthDay", it) }
             p.deathMonth?.let { o.put("deathMonth", it) }
             p.deathDay?.let { o.put("deathDay", it) }
+            if (p.born != null && p.birthQualifier != DateQualifier.Exact) {
+                o.put("birthQual", p.birthQualifier.key)
+                p.birthEndYear?.let { o.put("birthEnd", it) }
+            }
+            if (p.died != null && p.deathQualifier != DateQualifier.Exact) {
+                o.put("deathQual", p.deathQualifier.key)
+                p.deathEndYear?.let { o.put("deathEnd", it) }
+            }
             details.events[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("events", EventJson.events(it)) }
             details.sources[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("sources", EventJson.sources(it)) }
             photos[p.id]?.let { o.put("photo", base64.encodeToString(it)) }
@@ -140,7 +148,11 @@ object BackupCodec {
                 val birthDay = small(o, "birthDay")
                 val deathMonth = small(o, "deathMonth")
                 val deathDay = small(o, "deathDay")
-                if (!PartialDate(born, birthMonth, birthDay).isValid || !PartialDate(died, deathMonth, deathDay).isValid) {
+                val birthQual = EventJson.qualifier(o, "birthQual")
+                val deathQual = EventJson.qualifier(o, "deathQual")
+                val birthEnd = if (o.has("birthEnd") && !o.isNull("birthEnd")) o.getInt("birthEnd") else null
+                val deathEnd = if (o.has("deathEnd") && !o.isNull("deathEnd")) o.getInt("deathEnd") else null
+                if (!PartialDate(born, birthMonth, birthDay, birthQual, birthEnd).isValid || !PartialDate(died, deathMonth, deathDay, deathQual, deathEnd).isValid) {
                     throw BackupException(DAMAGED)
                 }
                 if (o.has("events") && !o.isNull("events")) personEvents[id] = EventJson.readEvents(o.getJSONArray("events"))
@@ -172,6 +184,10 @@ object BackupCodec {
                     lat = lat,
                     lng = lng,
                     isMe = isMe,
+                    birthQualifier = if (born != null) birthQual else DateQualifier.Exact,
+                    birthEndYear = if (born != null) birthEnd else null,
+                    deathQualifier = if (died != null) deathQual else DateQualifier.Exact,
+                    deathEndYear = if (died != null) deathEnd else null,
                 )
             }
             val links = readPairs(root.optJSONArray("parentLinks"), ids).distinct()
@@ -305,6 +321,10 @@ object EventJson {
             e.date.year?.let { o.put("year", it) }
             e.date.month?.let { o.put("month", it) }
             e.date.day?.let { o.put("day", it) }
+            if (e.date.year != null && e.date.qualifier != DateQualifier.Exact) {
+                o.put("qual", e.date.qualifier.key)
+                e.date.endYear?.let { o.put("endYear", it) }
+            }
             if (e.sources.isNotEmpty()) o.put("sources", sources(e.sources))
             put(o)
         }
@@ -334,7 +354,7 @@ object EventJson {
             val o = array.getJSONObject(i)
             val key = o.optString("kind", "")
             val kind = EventKind.fromKey(key)
-            val date = PartialDate(number(o, "year"), number(o, "month"), number(o, "day"))
+            val date = PartialDate(number(o, "year"), number(o, "month"), number(o, "day"), qualifier(o, "qual"), number(o, "endYear"))
             if (!date.isValid) throw BackupException(DAMAGED)
             val detail = o.optString("detail", "").ifBlank { if (kind == null) key else "" }
             val sources = o.optJSONArray("sources")?.let(::readSources).orEmpty()
@@ -344,6 +364,10 @@ object EventJson {
     }
 
     private fun number(o: JSONObject, key: String): Int? = if (!o.has(key) || o.isNull(key)) null else o.getInt(key)
+
+    /** A date qualifier by its key, "exact" when absent; a key this version does not know means a damaged file. */
+    internal fun qualifier(o: JSONObject, key: String): DateQualifier =
+        if (!o.has(key) || o.isNull(key)) DateQualifier.Exact else DateQualifier.fromKey(o.getString(key)) ?: throw BackupException(DAMAGED)
 
     /** A person's details as one piece of text, for the form to keep across rotation. */
     fun encodeDetails(d: PersonDetails): String = JSONObject()

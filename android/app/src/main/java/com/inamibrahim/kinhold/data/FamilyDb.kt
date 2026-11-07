@@ -76,6 +76,21 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
         createEventTables(db)
         createFieldTable(db)
         createGalleryTable(db)
+        addDateQualifierColumns(db)
+    }
+
+    /**
+     * Dates can be about, before, after or between two years. Birth and death get a qualifier and an end year each, and every
+     * event (a person's or a couple's) gets one. Existing rows are exact dates, so the default of 0 changes nothing. Both a new
+     * database and the step up from version 8 go through here, so the two cannot differ.
+     */
+    private fun addDateQualifierColumns(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE person ADD COLUMN birth_qual INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE person ADD COLUMN birth_end INTEGER")
+        db.execSQL("ALTER TABLE person ADD COLUMN death_qual INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE person ADD COLUMN death_end INTEGER")
+        db.execSQL("ALTER TABLE event ADD COLUMN qual INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE event ADD COLUMN end_year INTEGER")
     }
 
     /** Photos live in their own table so the main query never reads their bytes; deleting a person deletes theirs. */
@@ -185,10 +200,11 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
         }
         if (oldVersion < 7) createGalleryTable(db)
         if (oldVersion < 8) db.execSQL("ALTER TABLE parent_link ADD COLUMN kind INTEGER NOT NULL DEFAULT 0")
+        if (oldVersion < 9) addDateQualifierColumns(db)
     }
 
     companion object {
-        const val VERSION = 8
+        const val VERSION = 9
         const val FILE_NAME = "kinhold.db"
     }
 }

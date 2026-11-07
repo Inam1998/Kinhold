@@ -9,6 +9,7 @@ import com.inamibrahim.kinhold.model.BackupCodec
 import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.CoupleInfo
 import com.inamibrahim.kinhold.model.CustomField
+import com.inamibrahim.kinhold.model.DateQualifier
 import com.inamibrahim.kinhold.model.Event
 import com.inamibrahim.kinhold.model.EventKind
 import com.inamibrahim.kinhold.model.Family
@@ -417,6 +418,8 @@ class FamilyRepository(
             birthPlace = pick(d.birthPlace, gone.birthPlace), deathPlace = pick(d.deathPlace, gone.deathPlace), notes = notes,
             birthMonth = if (takeBirth) gone.birthMonth else d.birthMonth, birthDay = if (takeBirth) gone.birthDay else d.birthDay,
             deathMonth = if (takeDeath) gone.deathMonth else d.deathMonth, deathDay = if (takeDeath) gone.deathDay else d.deathDay,
+            birthQualifier = if (takeBirth) gone.birthQualifier else d.birthQualifier, birthEndYear = if (takeBirth) gone.birthEndYear else d.birthEndYear,
+            deathQualifier = if (takeDeath) gone.deathQualifier else d.deathQualifier, deathEndYear = if (takeDeath) gone.deathEndYear else d.deathEndYear,
             uid = d.uid, address = pick(d.address, gone.address), phone = pick(d.phone, gone.phone),
             lat = d.lat ?: gone.lat.takeIf { d.lat == null }, lng = d.lng ?: gone.lng.takeIf { d.lng == null },
             email = pick(d.email, gone.email),
@@ -500,7 +503,7 @@ class FamilyRepository(
         // The photo table is joined only for its stamp; the picture bytes are read when a card needs them.
         db.rawQuery(
             "SELECT p.id, p.given, p.surname, p.sex, p.birth_year, p.death_year, p.birth_place, p.death_place, p.notes, " +
-                "COALESCE(ph.stamp, 0), p.birth_month, p.birth_day, p.death_month, p.death_day, COALESCE(p.uid, ''), p.address, p.phone, p.geo_lat, p.geo_lng, p.is_me, p.email FROM person p LEFT JOIN photo ph ON ph.person_id = p.id ORDER BY p.id",
+                "COALESCE(ph.stamp, 0), p.birth_month, p.birth_day, p.death_month, p.death_day, COALESCE(p.uid, ''), p.address, p.phone, p.geo_lat, p.geo_lng, p.is_me, p.email, p.birth_qual, p.birth_end, p.death_qual, p.death_end FROM person p LEFT JOIN photo ph ON ph.person_id = p.id ORDER BY p.id",
             null,
         ).use { c ->
             while (c.moveToNext()) {
@@ -526,6 +529,10 @@ class FamilyRepository(
                     lng = if (c.isNull(18)) null else c.getDouble(18),
                     isMe = c.getInt(19) == 1,
                     email = c.getString(20),
+                    birthQualifier = DateQualifier.fromOrdinal(c.getInt(21)),
+                    birthEndYear = c.intOrNull(22),
+                    deathQualifier = DateQualifier.fromOrdinal(c.getInt(23)),
+                    deathEndYear = c.intOrNull(24),
                 )
             }
         }
@@ -588,6 +595,13 @@ private fun PersonDraft.toValues() = ContentValues().apply {
     if (bm != null && birthDay != null) put("birth_day", birthDay) else putNull("birth_day")
     if (dm != null) put("death_month", dm) else putNull("death_month")
     if (dm != null && deathDay != null) put("death_day", deathDay) else putNull("death_day")
+    // How sure the dates are. A qualifier needs a year, and an end year goes only with "between".
+    val bd = birthDate.normalized()
+    val dd = deathDate.normalized()
+    put("birth_qual", if (bd.year != null) bd.qualifier.ordinal else 0)
+    if (bd.endYear != null) put("birth_end", bd.endYear) else putNull("birth_end")
+    put("death_qual", if (dd.year != null) dd.qualifier.ordinal else 0)
+    if (dd.endYear != null) put("death_end", dd.endYear) else putNull("death_end")
 }
 
 private fun SQLiteDatabase.insertPerson(draft: PersonDraft, uid: String = draft.uid): Int =
@@ -647,7 +661,7 @@ private fun SQLiteDatabase.parentsOf(child: Int): List<Int> {
 
 private fun Cursor.intOrNull(i: Int): Int? = if (isNull(i)) null else getInt(i)
 
-private val EVENT_COLUMNS = "id, person_id, a_id, b_id, kind, detail, year, month, day, place, note"
+private val EVENT_COLUMNS = "id, person_id, a_id, b_id, kind, detail, year, month, day, place, note, qual, end_year"
 
 private fun SQLiteDatabase.insertEvent(personId: Int?, a: Int?, b: Int?, event: Event) {
     val values = ContentValues().apply {
@@ -659,6 +673,8 @@ private fun SQLiteDatabase.insertEvent(personId: Int?, a: Int?, b: Int?, event: 
         event.date.year?.let { put("year", it) }
         event.date.month?.let { put("month", it) }
         event.date.day?.let { put("day", it) }
+        if (event.date.year != null) put("qual", event.date.qualifier.ordinal)
+        event.date.endYear?.let { put("end_year", it) }
         put("place", event.place)
         put("note", event.note)
     }
@@ -720,7 +736,7 @@ private fun eventFrom(c: Cursor, sources: Map<Long, List<Source>>): Event {
     return Event(
         kind = kind ?: EventKind.Custom,
         detail = c.getString(5).ifBlank { if (kind == null) key else "" },
-        date = PartialDate(c.intOrNull(6), c.intOrNull(7), c.intOrNull(8)),
+        date = PartialDate(c.intOrNull(6), c.intOrNull(7), c.intOrNull(8), DateQualifier.fromOrdinal(c.getInt(11)), c.intOrNull(12)),
         place = c.getString(9),
         note = c.getString(10),
         sources = sources[c.getLong(0)].orEmpty(),

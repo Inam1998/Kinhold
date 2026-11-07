@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,11 +47,13 @@ import java.time.LocalDate
 
 /** Save the whole tree to one file, restore from one, and undo the last restore. */
 @Composable
-fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onMerge: () -> Unit, onCleared: () -> Unit) {
+fun BackupScreen(vm: KinholdViewModel, family: com.inamibrahim.kinhold.model.Family, peopleCount: Int, scroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onMerge: () -> Unit, onShare: (Int) -> Unit, onCleared: () -> Unit) {
     var clearing by remember { mutableStateOf(false) }
+    var choosingShare by remember { mutableStateOf(false) }
     val backupFirst = rememberBackupFirst(vm, peopleCount)
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var pending by remember { mutableStateOf<BackupData?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
@@ -107,7 +110,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 .verticalScroll(scroll)
                 .padding(horizontal = 20.dp),
         ) {
-            ScreenHeader("Kinhold", "Backup and restore", Modifier.padding(top = 12.dp, bottom = 20.dp), onBack = onBack)
+            ScreenHeader("Kinhold", "Backup and sharing", Modifier.padding(top = 12.dp, bottom = 20.dp), onBack = onBack)
 
             message?.let { (text, isError) ->
                 AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -119,7 +122,17 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                     )
                 }
             }
+            AppCard(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Which one do I need?", style = MaterialTheme.typography.titleLarge, color = Palette.Text)
+                    GuideLine(Icons.Filled.Lock, Tones.Mint, "Keep my own tree safe", "Back up and restore, just below.")
+                    GuideLine(Icons.Filled.Share, Tones.Violet, "Send some of my relatives to a family member", "Share with a relative. They open the file in their own Kinhold.")
+                    GuideLine(Icons.Filled.Add, Tones.Sky, "I received a file", "Open a file from a relative. It works for Kinhold files and GEDCOM files.")
+                    GuideLine(Icons.Filled.Send, Tones.Amber, "Move to or from another program", "Ancestry, MyHeritage or FamilySearch: the GEDCOM section, further down.")
+                }
+            }
 
+            SectionHeader("Keep your tree safe", "Copies of your own tree, so you never lose it.")
             AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -193,6 +206,23 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                         Modifier.fillMaxWidth(),
                         enabled = peopleCount > 0,
                     )
+                    DialogButton(
+                        "Send a copy (Drive, email, WhatsApp)",
+                        {
+                            val p = SendFile.prepare(context, "kinhold-backup-${LocalDate.now()}.json", "application/json", "Kinhold backup")
+                            // Not counted as "backed up": Kinhold cannot tell where the share sheet sent it.
+                            vm.saveBackup(p.uri, markBackedUp = false) { result ->
+                                result.fold(
+                                    { SendFile.send(context, p); message = "Copy of ${plural(it)} ready. Choose where to send it." to false },
+                                    { message = (it.message ?: "The copy could not be made.") to true },
+                                )
+                            }
+                        },
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        kind = ButtonKind.Tonal,
+                        icon = Icons.Filled.Send,
+                        enabled = peopleCount > 0,
+                    )
                     Text(
                         "The file is not encrypted. Anyone who has it can read your tree, so keep it private.",
                         style = MaterialTheme.typography.bodySmall,
@@ -204,30 +234,10 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
 
             AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Add, Tones.Sky, 40.dp); Text("Merge a shared file", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
-                    Text(
-                        "Got a file from a relative (made with Share branch on a person)? Merging adds the people you do not have, " +
-                            "skips the ones you do, and asks you about anything that differs. Nothing is replaced unless you choose it, " +
-                            "and you can undo. A backup or GEDCOM file can be merged the same way.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Palette.TextMuted,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-                    )
-                    Pill(
-                        "Choose a file to merge",
-                        selected = false,
-                        onClick = { mergeOpener.launch(arrayOf("*/*")) },
-                        modifier = Modifier.fillMaxWidth(),
-                        )
-                }
-            }
-
-            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Column(Modifier.padding(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Refresh, Tones.Amber, 40.dp); Text("Restore from a backup", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
-                        "Replaces the tree on this phone with the one in a backup file. The file is checked first, and a copy " +
-                            "of your current tree is kept so you can undo.",
+                        "Use this to get your own tree back from a backup file, for example on a new phone. It replaces the tree on this phone with the one in the file. " +
+                            "The file is checked first, and a copy of your current tree is kept so you can undo. To add someone else's file instead, use Open a file from a relative.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
@@ -241,17 +251,53 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 }
             }
 
-            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            SectionHeader("Share with a relative", "Give a family member part of your tree, or add what they send you.")
+            AppCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Send, Tones.Violet, 40.dp); Text("Share with other programs", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Share, Tones.Violet, 40.dp); Text("Send part of your tree", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
                     Text(
-                        "GEDCOM is the standard file for family trees. Use it to bring a tree here from Ancestry, MyHeritage, " +
-                            "FamilySearch or another program, or to take yours there.",
+                        "Choose one person. Kinhold then makes a file with them and the relatives you pick (their parents and grandparents, their children, and so on). " +
+                            "Send it by WhatsApp, email or any other app. Your relative opens it in their own Kinhold, and only the people they do not already have are added. Nothing is removed from their tree.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
                     )
-                    Pill("Import a GEDCOM file", selected = false, onClick = openGedcom, modifier = Modifier.fillMaxWidth())
+                    DialogButton("Choose who to start from", { choosingShare = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary, icon = Icons.Filled.Share, enabled = peopleCount > 0)
+                }
+            }
+
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Add, Tones.Sky, 40.dp); Text("Open a file from a relative", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text(
+                        "Got a file from a relative? Choose it here. Kinhold tells you what kind of file it is, shows who is already in your tree and who is new, " +
+                            "and asks about anything that differs. It only adds, never removes, and you can undo. It works with Kinhold share files, Kinhold backups and GEDCOM files.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                    )
+                    Pill(
+                        "Choose the file",
+                        selected = false,
+                        onClick = { mergeOpener.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        )
+                }
+            }
+
+            SectionHeader("Other family tree programs", "GEDCOM is the file every family tree program understands.")
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Send, Tones.Violet, 40.dp); Text("Share with other programs", style = MaterialTheme.typography.titleLarge, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text(
+                        "Import is for bringing a whole tree here the first time from Ancestry, MyHeritage, FamilySearch or another program. " +
+                            "If you already have people here and want to add a GEDCOM file without getting anyone twice, use Open a file from a relative instead. " +
+                            "Save as a GEDCOM file lets other programs read your tree.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                    )
+                    Pill("Import a GEDCOM file (add or replace)", selected = false, onClick = openGedcom, modifier = Modifier.fillMaxWidth())
                     Pill(
                         "Save as a GEDCOM file",
                         selected = false,
@@ -268,6 +314,7 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                 }
             }
 
+            SectionHeader("Undo and start over", "Take back the last big change, or empty the tree.")
             if (vm.hasSafetyCopy) {
                 AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.padding(24.dp)) {
@@ -309,6 +356,8 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}
         }
     }
+
+    if (choosingShare) PersonPickerDialog(family, "Start from which person?", { id -> choosingShare = false; onShare(id) }, { choosingShare = false })
 
     if (clearing) ClearTreeDialog(peopleCount, { clearing = false; vm.clearTree { onCleared() } }, { clearing = false })
 
@@ -352,3 +401,24 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
 }
 
 private fun plural(n: Int): String = "$n ${if (n == 1) "person" else "people"}"
+
+/** A heading that groups the cards under it by what the person wants to do, with one line saying what the group is for. */
+@Composable
+private fun SectionHeader(title: String, subtitle: String) {
+    Column(Modifier.padding(top = 22.dp, bottom = 10.dp, start = 4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = Palette.Accent)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+    }
+}
+
+/** One line of the "Which one do I need?" guide: an icon, what the person wants, and where to go for it. */
+@Composable
+private fun GuideLine(icon: androidx.compose.ui.graphics.vector.ImageVector, tone: androidx.compose.ui.graphics.Color, want: String, where: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ToneIcon(icon, tone, 36.dp)
+        Column(Modifier.padding(start = 12.dp)) {
+            Text(want, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+            Text(where, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+        }
+    }
+}

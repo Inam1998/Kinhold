@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.inamibrahim.kinhold.data.IncomingKind
 import com.inamibrahim.kinhold.data.KinholdViewModel
 import com.inamibrahim.kinhold.data.MergeSession
 import com.inamibrahim.kinhold.model.Anchor
@@ -81,7 +82,7 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
 
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-            ScreenHeader("Merge", "Merge a shared file", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp))
+            ScreenHeader("Open a file", "Add to your tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp))
             val finished = done
             if (finished != null) {
                 DoneCard(vm, finished) { vm.cancelMerge(); onDone() }
@@ -95,11 +96,26 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
                 item {
                     AppCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("The file has ${people(session.data.people.size)}.", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-                            Text("${people(matches.size)} are already in your tree.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
-                            Text("${people(result.newPeople.size)} will be added as new.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+                            // First say what kind of file this is, so the person knows what they are looking at.
+                            val rootName = plan.rootIncomingId?.let { plan.incomingPerson(it).name }
                             Text(
-                                "Nothing in your tree is replaced unless you choose it below. A copy of your tree is kept, so you can undo.",
+                                when (session.kind) {
+                                    IncomingKind.Share -> if (rootName != null) "A share file: relatives of $rootName" else "A share file from a relative"
+                                    IncomingKind.Backup -> "A Kinhold backup file" + (if (session.data.created.length >= 10) ", saved on ${session.data.created.take(10)}" else "")
+                                    IncomingKind.Gedcom -> "A GEDCOM file from another family tree program"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Palette.Accent,
+                            )
+                            Text("It has ${people(session.data.people.size)}.", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                            Text("${people(matches.size)} ${if (matches.size == 1) "is" else "are"} already in your tree, and will not be added again.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+                            Text("${people(result.newPeople.size)} ${if (result.newPeople.size == 1) "is" else "are"} new, and will be added.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
+                            Text(
+                                when (session.kind) {
+                                    IncomingKind.Share -> "A share file adds to your tree and never removes anything. Look through the choices below, then tap Add to my tree at the bottom."
+                                    IncomingKind.Backup -> "This adds to your tree and never removes anything. To swap your whole tree for this backup instead, go back and use Restore."
+                                    IncomingKind.Gedcom -> "This adds to your tree and never removes anything. People already in your tree are matched, so you do not get them twice."
+                                } + " A copy of your tree is kept first, so you can undo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Palette.TextMuted,
                                 modifier = Modifier.padding(top = 6.dp),
@@ -171,7 +187,7 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
                     Text(
                         "This will add ${people(result.newPeople.size)}, ${count(result.links.size, "family link")}, ${count(result.eventCount, "event")} and ${count(result.sourceCount, "source")}, " +
                             "and change ${count(result.fieldCount, "field")}." +
-                            if (result.skippedParentLinks > 0) " ${result.skippedParentLinks} parent links are skipped because that person already has two parents." else "",
+                            if (result.skippedParentLinks > 0) " ${result.skippedParentLinks} parent links are skipped because that person already has four parents." else "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Palette.Accent,
                         modifier = Modifier.padding(top = 8.dp, start = 4.dp),
@@ -181,9 +197,9 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
             }
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PrimaryButton(
-                    if (working) "Merging…" else "Merge into my tree",
+                    if (working) "Adding…" else "Add to my tree",
                     {
-                        backupFirst("Merging this file") {
+                        backupFirst("Adding this file") {
                             working = true
                             error = null
                             vm.applyMerge(session, accepted, useHis, addEvents, anchor) { r ->
@@ -207,7 +223,7 @@ private fun DoneCard(vm: KinholdViewModel, r: MergeResult, onDone: () -> Unit) {
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
         AppCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (undone) "Merge undone. Your earlier tree is back." else "Merged.", style = MaterialTheme.typography.titleLarge, color = Palette.Accent)
+                Text(if (undone) "Undone. Your earlier tree is back." else "Added to your tree.", style = MaterialTheme.typography.titleLarge, color = Palette.Accent)
                 if (!undone) {
                     Text(
                         "Added ${people(r.newPeople.size)}, ${count(r.links.size, "family link")}, ${count(r.eventCount, "event")} and ${count(r.sourceCount, "source")}. " +
@@ -216,12 +232,12 @@ private fun DoneCard(vm: KinholdViewModel, r: MergeResult, onDone: () -> Unit) {
                         color = Palette.TextMuted,
                     )
                     if (r.skippedParentLinks > 0) {
-                        Text("${r.skippedParentLinks} parent links were skipped because that person already has two parents.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                        Text("${r.skippedParentLinks} parent links were skipped because that person already has four parents.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                     }
                 }
             }
         }
-        if (!undone) Pill("Undo this merge", false, { vm.undoRestore { undone = it.isSuccess } }, Modifier.fillMaxWidth().padding(top = 12.dp))
+        if (!undone) Pill("Undo this", false, { vm.undoRestore { undone = it.isSuccess } }, Modifier.fillMaxWidth().padding(top = 12.dp))
         PrimaryButton("Done", onDone, Modifier.fillMaxWidth().padding(top = 12.dp))
     }
 }

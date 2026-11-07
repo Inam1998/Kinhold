@@ -1,5 +1,6 @@
 package com.inamibrahim.kinhold
 
+import com.inamibrahim.kinhold.model.DateQualifier
 import com.inamibrahim.kinhold.model.EventKind
 import com.inamibrahim.kinhold.model.Gedcom
 import com.inamibrahim.kinhold.model.LinkKind
@@ -31,6 +32,19 @@ class GedcomAncestryStyleTest {
         assertEquals(1925, named("Zainab").born)  // ABT 1925
         assertEquals(1928, named("Hajra").born)   // BET 1928 AND 1931
         assertEquals(1950, named("Nasreen").born) // EST 1950
+    }
+
+    @Test
+    fun aboutBeforeAndBetweenDatesKeepTheirQualifier() {
+        assertEquals(DateQualifier.About, named("Zainab").birthQualifier)
+        assertEquals(DateQualifier.Before, named("Zainab").deathQualifier)
+        assertEquals(1990, named("Zainab").died)
+        val hajra = named("Hajra")
+        assertEquals(DateQualifier.Between, hajra.birthQualifier)
+        assertEquals(1931, hajra.birthEndYear)
+        assertEquals(DateQualifier.About, named("Nasreen").birthQualifier)
+        assertEquals("between 1928 and 1931", hajra.birthDate.text())
+        assertEquals("before 1990", named("Zainab").deathDate.text())
     }
 
     @Test
@@ -74,7 +88,7 @@ class GedcomAncestryStyleTest {
         val r = result.report
         assertEquals(10, r.individuals)
         assertEquals(4, r.families)
-        assertEquals(6, r.datesSimplified)
+        assertEquals(1, r.datesSimplified) // only the phrase after INT is lost; ABT, BEF, BET, EST and FROM-TO are kept as qualified dates
         assertEquals(1, r.ignoredMedia)
         assertEquals(2, r.skippedLinks) // @I999@ and @I998@ are not in the file
         assertTrue(result.data.parentLinks.none { it.first == named("Unknown").id })

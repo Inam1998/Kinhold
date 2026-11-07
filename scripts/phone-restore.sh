@@ -11,3 +11,9 @@ for f in kinhold.db kinhold.db-wal kinhold.db-shm; do
 done
 [ -s "$SRC/safety-before-restore.json" ] && cat "$SRC/safety-before-restore.json" | timeout 60 "$A" -s $SERIAL shell "run-as com.inamibrahim.kinhold sh -c 'cat > files/safety-before-restore.json'"
 echo "restored; open the app"
+# The preferences saved by phone-backup.sh (the tour is not shown again, theme and accent come back).
+timeout 20 "$A" -s $SERIAL shell run-as com.inamibrahim.kinhold mkdir -p shared_prefs
+for f in kinhold.xml kinhold-settings.xml; do
+  [ -s "$SRC/$f" ] && cat "$SRC/$f" | timeout 60 "$A" -s $SERIAL shell "run-as com.inamibrahim.kinhold sh -c 'cat > shared_prefs/$f'"
+done
+echo "preferences restored"

@@ -254,9 +254,12 @@ class Merge(
 
     private fun date(out: MutableList<FieldChange>, incomingId: Int, currentId: Int, name: String, field: MergeField, mine: PartialDate, his: PartialDate) {
         if (his.isEmpty || mine == his) return
-        val refinement = mine.isEmpty || (
-            mine.year == his.year && (mine.month == null || mine.month == his.month) && (mine.day == null || mine.day == his.day)
-            )
+        // His date only fills in mine when it says the same thing more exactly: the same year, with more detail or less doubt.
+        // An "about" date never replaces an exact one without being asked, and two different qualified dates are a conflict.
+        val sameParts = mine.year == his.year && (mine.month == null || mine.month == his.month) && (mine.day == null || mine.day == his.day)
+        val qualifierOk = mine.qualifier == his.qualifier || (his.qualifier == DateQualifier.Exact && mine.qualifier != DateQualifier.Exact)
+        val sameRange = mine.qualifier != DateQualifier.Between || mine.endYear == his.endYear
+        val refinement = mine.isEmpty || (sameParts && qualifierOk && sameRange)
         out += FieldChange(incomingId, currentId, name, field, mine.text().ifEmpty { "empty" }, his.text(), isFill = refinement)
     }
 
@@ -390,6 +393,10 @@ class Merge(
         birthDay = if (field == MergeField.Born) his.birthDay else base.birthDay,
         deathMonth = if (field == MergeField.Died) his.deathMonth else base.deathMonth,
         deathDay = if (field == MergeField.Died) his.deathDay else base.deathDay,
+        birthQualifier = if (field == MergeField.Born) his.birthQualifier else base.birthQualifier,
+        birthEndYear = if (field == MergeField.Born) his.birthEndYear else base.birthEndYear,
+        deathQualifier = if (field == MergeField.Died) his.deathQualifier else base.deathQualifier,
+        deathEndYear = if (field == MergeField.Died) his.deathEndYear else base.deathEndYear,
         uid = base.uid,
         address = if (field == MergeField.Address) his.address else base.address,
         phone = if (field == MergeField.Phone) his.phone else base.phone,

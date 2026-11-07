@@ -122,7 +122,7 @@ class GedcomTest {
         val report = read(sample).report
         assertEquals(5, report.individuals)
         assertEquals(2, report.families)
-        assertEquals(2, report.datesSimplified)    // BET 2000 AND 2005 and ABT 1952; 12 JAN 1950 is kept whole
+        assertEquals(0, report.datesSimplified)    // BET 2000 AND 2005 and ABT 1952 keep their qualifiers; 12 JAN 1950 is kept whole
         assertEquals(0, report.ignoredEvents)
         assertEquals(3, report.eventsKept)         // OCCU, RESI and the marriage
         assertEquals(1, report.ignoredSources)      // @S1@ has no record in the file
@@ -135,7 +135,8 @@ class GedcomTest {
         val text = read(sample).report.summary(currentPeople = 12).joinToString("\n")
         assertTrue(text.contains("5 people in 2 families"))
         assertTrue(text.contains("Your tree has 12 people"))
-        assertTrue(text.contains("Only the first date in each is kept"))
+        val phrase = read("0 HEAD\n0 @I1@ INDI\n1 NAME A /B/\n1 BIRT\n2 DATE sometime in the spring of 1950\n0 TRLR").report.summary(0).joinToString("\n")
+        assertTrue(phrase.contains("1 date was simplified"))
         assertTrue(text.contains("3 events and 0 source citations, which are kept"))
         assertTrue(text.contains("1 link to a person missing from the file was skipped."))
         assertTrue(text.contains("1 source citation,"))

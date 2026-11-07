@@ -11,3 +11,8 @@ for f in kinhold.db kinhold.db-wal kinhold.db-shm; do
 done
 timeout 60 "$A" -s $SERIAL exec-out run-as com.inamibrahim.kinhold cat files/safety-before-restore.json > "$DEST/safety-before-restore.json" 2>/dev/null || rm -f "$DEST/safety-before-restore.json"
 ls -la "$DEST"
+# The app's own preferences (welcome tour seen, theme, accent, lock, card fold) so a test run does not reset them.
+for f in kinhold.xml kinhold-settings.xml; do
+  timeout 60 "$A" -s $SERIAL exec-out run-as com.inamibrahim.kinhold cat shared_prefs/$f > "$DEST/$f" 2>/dev/null || rm -f "$DEST/$f"
+done
+ls -la "$DEST" | grep xml

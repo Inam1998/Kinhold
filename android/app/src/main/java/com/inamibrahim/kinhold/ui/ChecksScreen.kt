@@ -38,6 +38,8 @@ import com.inamibrahim.kinhold.model.Finding
 import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.TreeChecks
+import com.inamibrahim.kinhold.model.TreeGroup
+import com.inamibrahim.kinhold.model.TreeGroups
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +48,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
-private class CheckResult(val findings: List<Finding>, val duplicates: List<DuplicatePair>)
+/** How many separate groups are listed; the rest are counted. A few hundred cards would be no use to anyone, and slow to build. */
+private const val GROUPS_SHOWN = 30
+
+private class CheckResult(val findings: List<Finding>, val duplicates: List<DuplicatePair>, val groups: List<TreeGroup>)
 
 /** Things in the tree that look wrong, and people who may be entered twice, with a way to join them. Nothing changes without a tap and a confirmation. */
 @Composable
@@ -56,7 +61,7 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
             // The bar stays up for at least a moment, so a small tree does not make it flash by.
             kotlinx.coroutines.coroutineScope {
                 val minimum = async { delay(600) }
-                value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family)) }
+                value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family), TreeGroups.of(family)) }
                 minimum.await()
             }
         }
@@ -100,6 +105,32 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                                 Text(f.message, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.padding(start = 14.dp))
                             }
                         }
+                    }
+                    // Groups of people who are not linked to the biggest group. The tree screen shows only the group of the person in focus,
+                    // so a branch cut off by removing a link or a delete is easy to forget; this lists them and opens each one.
+                    item { SectionTitle("Separate groups", Tones.Sky, Icons.Filled.Person) }
+                    if (r.groups.size <= 1) {
+                        item { Quiet("Everyone is linked together in one tree.") }
+                    } else {
+                        val rest = r.groups.drop(1)
+                        item {
+                            Quiet(
+                                "Your tree is ${r.groups.size} separate groups that are not linked to each other. The biggest has ${r.groups[0].size} people. " +
+                                    "The tree screen shows one group at a time, so open the others from here, or link them with Link person on a Details page.",
+                            )
+                        }
+                        items(rest.take(GROUPS_SHOWN)) { g ->
+                            AppCard(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable { onOpen(g.start.id) }) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    ToneIcon(Icons.Filled.Person, Tones.Sky, 40.dp)
+                                    Column(Modifier.padding(start = 14.dp)) {
+                                        Text(if (g.size == 1) "1 person, not linked to anyone" else "${g.size} people linked together", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                                        Text("Open on ${g.start.name}${g.start.years().let { if (it.isEmpty()) "" else "  ·  $it" }}", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                                    }
+                                }
+                            }
+                        }
+                        if (rest.size > GROUPS_SHOWN) item { Quiet("And ${rest.size - GROUPS_SHOWN} more, the smallest ones.") }
                     }
                 }
                 item { Column(Modifier.padding(bottom = 8.dp)) {} }

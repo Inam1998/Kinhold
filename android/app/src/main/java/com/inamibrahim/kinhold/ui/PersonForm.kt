@@ -136,6 +136,9 @@ fun PersonFormScreen(
     var died by rememberSaveable { mutableStateOf(initial.died?.toString() ?: "") }
     var diedMonth by rememberSaveable { mutableStateOf(initial.deathMonth?.toString() ?: "") }
     var diedDay by rememberSaveable { mutableStateOf(initial.deathDay?.toString() ?: "") }
+    // How sure each date is (about, before, after, between), kept as a short text so it survives rotation like the other boxes.
+    var bornQual by rememberSaveable { mutableStateOf(com.inamibrahim.kinhold.model.DateExtra.encode(initial.birthQualifier, initial.birthEndYear)) }
+    var diedQual by rememberSaveable { mutableStateOf(com.inamibrahim.kinhold.model.DateExtra.encode(initial.deathQualifier, initial.deathEndYear)) }
     var address by rememberSaveable { mutableStateOf(initial.address) }
     var phone by rememberSaveable { mutableStateOf(initial.phone) }
     var email by rememberSaveable { mutableStateOf(initial.email) }
@@ -177,6 +180,8 @@ fun PersonFormScreen(
         given, surname, sex, born.toIntOrNull(), died.toIntOrNull(), birthPlace, deathPlace, notes,
         bornMonth.toIntOrNull(), bornDay.toIntOrNull(), diedMonth.toIntOrNull(), diedDay.toIntOrNull(),
         initial.uid, address, phone, pin?.lat, pin?.lng, email,
+        birthQualifier = com.inamibrahim.kinhold.model.DateExtra.qualifier(bornQual), birthEndYear = com.inamibrahim.kinhold.model.DateExtra.endYear(bornQual).toIntOrNull(),
+        deathQualifier = com.inamibrahim.kinhold.model.DateExtra.qualifier(diedQual), deathEndYear = com.inamibrahim.kinhold.model.DateExtra.endYear(diedQual).toIntOrNull(),
     )
     val displayName = listOf(given, surname).filter { it.isNotBlank() }.joinToString(" ").ifEmpty { "this person" }
     val problem = when {
@@ -284,9 +289,9 @@ fun PersonFormScreen(
                         }
                     }
                     FormCard("Life", Icons.Filled.DateRange, Tones.Amber) {
-                        DateFields("Born", bornDay, bornMonth, born, { d, m, y -> bornDay = d; bornMonth = m; born = y })
+                        DateFields("Born", bornDay, bornMonth, born, bornQual, { d, m, y, q -> bornDay = d; bornMonth = m; born = y; bornQual = q })
                         PlaceField("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth())
-                        DateFields("Died", diedDay, diedMonth, died, { d, m, y -> diedDay = d; diedMonth = m; died = y })
+                        DateFields("Died", diedDay, diedMonth, died, diedQual, { d, m, y, q -> diedDay = d; diedMonth = m; died = y; diedQual = q })
                         PlaceField("Place of death", deathPlace, { deathPlace = it }, Modifier.fillMaxWidth())
                     }
 

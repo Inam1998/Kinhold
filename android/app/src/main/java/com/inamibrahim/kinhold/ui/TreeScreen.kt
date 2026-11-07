@@ -368,12 +368,12 @@ private fun FocusCard(
                 ActionTile("Details", Icons.Filled.Person, onDetails, Modifier.weight(1f), tone = Tones.Sky, compact = compact)
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber, compact = compact)
                 // A person can have up to four parents recorded (birth, adoptive, foster, step) and any number of spouses.
-                if (parents < Family.MAX_PARENTS) ActionTile("Parent", Icons.Filled.KeyboardArrowUp, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet, compact = compact)
+                if (parents < Family.MAX_PARENTS) ActionTile("Parent", FamilyIcons.Parent, { onAdd(Relation.ParentOf(person.id)) }, Modifier.weight(1f), tone = Tones.Violet, compact = compact)
             }
             val second: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-                if (sibling != null) ActionTile("Sibling", Icons.AutoMirrored.Filled.ArrowForward, { onAdd(sibling) }, Modifier.weight(1f), tone = Tones.Teal, compact = compact)
+                if (sibling != null) ActionTile("Sibling", FamilyIcons.Sibling, { onAdd(sibling) }, Modifier.weight(1f), tone = Tones.Teal, compact = compact)
                 ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose, compact = compact)
-                ActionTile("Child", Icons.Filled.KeyboardArrowDown, onAddChild, Modifier.weight(1f), tone = Tones.Mint, compact = compact)
+                ActionTile("Child", FamilyIcons.Child, onAddChild, Modifier.weight(1f), tone = Tones.Mint, compact = compact)
             }
             if (compact) {
                 // Landscape is short: all the tiles share one row, so the card needs no scrolling.

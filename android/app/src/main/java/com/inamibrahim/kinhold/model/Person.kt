@@ -31,9 +31,14 @@ class Person(
     /** True for the person who is the owner of this tree ("this is me"); at most one person has it. */
     val isMe: Boolean = false,
     val email: String = "",
+    /** How sure the birth and death dates are (about, before, after, between), and the end year of a "between" date. */
+    val birthQualifier: DateQualifier = DateQualifier.Exact,
+    val birthEndYear: Int? = null,
+    val deathQualifier: DateQualifier = DateQualifier.Exact,
+    val deathEndYear: Int? = null,
 ) {
-    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay).normalized()
-    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay).normalized()
+    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay, birthQualifier, birthEndYear).normalized()
+    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay, deathQualifier, deathEndYear).normalized()
 
     /** "12 Mar 1850 – 3 Jan 1920" with whatever is known, or an empty string. */
     fun lifeDates(): String {
@@ -53,21 +58,29 @@ class Person(
     val name: String
         get() = listOf(given, surname).filter { it.isNotBlank() }.joinToString(" ").ifEmpty { "Unnamed" }
 
-    /** "1950 – 2010", "b. 1990", "d. 1950" or nothing when no year is known. */
-    fun years(): String = when {
-        born != null && died != null -> "$born – $died"
-        born != null -> "b. $born"
-        died != null -> "d. $died"
-        else -> ""
+    /** "1950 – 2010", "b. 1990", "d. 1950", "c. 1850 – bef. 1920" or nothing when no year is known. */
+    fun years(): String {
+        val b = birthDate.yearText()
+        val d = deathDate.yearText()
+        return when {
+            b.isNotEmpty() && d.isNotEmpty() -> "$b – $d"
+            b.isNotEmpty() -> "b. $b"
+            d.isNotEmpty() -> "d. $d"
+            else -> ""
+        }
     }
 
     /** The same person without address, phone, map pin and the "this is me" mark, for files sent to other people. */
     fun withoutPrivateDetails(keepContact: Boolean) = Person(
         id, given, surname, sex, born, died, birthPlace, deathPlace, notes, photoStamp, birthMonth, birthDay, deathMonth, deathDay, uid,
         if (keepContact) address else "", if (keepContact) phone else "", if (keepContact) lat else null, if (keepContact) lng else null, isMe = false, email = if (keepContact) email else "",
+        birthQualifier = birthQualifier, birthEndYear = birthEndYear, deathQualifier = deathQualifier, deathEndYear = deathEndYear,
     )
 
-    fun toDraft() = PersonDraft(given, surname, sex, born, died, birthPlace, deathPlace, notes, birthMonth, birthDay, deathMonth, deathDay, uid, address, phone, lat, lng, email)
+    fun toDraft() = PersonDraft(
+        given, surname, sex, born, died, birthPlace, deathPlace, notes, birthMonth, birthDay, deathMonth, deathDay, uid, address, phone, lat, lng, email,
+        birthQualifier, birthEndYear, deathQualifier, deathEndYear,
+    )
 }
 
 /** What the form fills in. It becomes a [Person] with an id when it is saved. */
@@ -91,15 +104,19 @@ class PersonDraft(
     val lat: Double? = null,
     val lng: Double? = null,
     val email: String = "",
+    val birthQualifier: DateQualifier = DateQualifier.Exact,
+    val birthEndYear: Int? = null,
+    val deathQualifier: DateQualifier = DateQualifier.Exact,
+    val deathEndYear: Int? = null,
 ) {
-    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay)
-    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay)
+    val birthDate: PartialDate get() = PartialDate(born, birthMonth, birthDay, birthQualifier, birthEndYear)
+    val deathDate: PartialDate get() = PartialDate(died, deathMonth, deathDay, deathQualifier, deathEndYear)
 
     /** Someone needs at least part of a name. */
     val hasName: Boolean get() = given.isNotBlank() || surname.isNotBlank()
 
     /** A person cannot die before they were born. */
-    val datesMakeSense: Boolean get() = born == null || died == null || !deathDate.isBefore(birthDate)
+    val datesMakeSense: Boolean get() = born == null || died == null || birthDate.isApproximate || deathDate.isApproximate || !deathDate.isBefore(birthDate)
 
     /** Months and days that are not real ones (a 13th month, 31 February) are refused. */
     val datesAreReal: Boolean get() = birthDate.isValid && deathDate.isValid
@@ -191,14 +208,15 @@ fun Person.ageText(today: java.time.LocalDate): String {
     val d = deathDate
     if (d.year == null) {
         if (by <= today.year - 110 || by > today.year) return ""
-        return agePhrase(by, b.month, b.day, today.year, today.monthValue, today.dayOfMonth, prefix = "Age")
+        return agePhrase(by, b.month, b.day, today.year, today.monthValue, today.dayOfMonth, prefix = "Age", approximate = b.isApproximate)
     }
     if (d.year < by) return ""
-    return agePhrase(by, b.month, b.day, d.year, d.month, d.day, prefix = "Aged", suffix = " when they died")
+    return agePhrase(by, b.month, b.day, d.year, d.month, d.day, prefix = "Aged", suffix = " when they died", approximate = b.isApproximate || d.isApproximate)
 }
 
-private fun agePhrase(by: Int, bm: Int?, bd: Int?, ey: Int, em: Int?, ed: Int?, prefix: String, suffix: String = ""): String {
-    val exact = bm != null && bd != null && em != null && ed != null
+private fun agePhrase(by: Int, bm: Int?, bd: Int?, ey: Int, em: Int?, ed: Int?, prefix: String, suffix: String = "", approximate: Boolean = false): String {
+    // An "about", "before" or "after" date can never give an exact age.
+    val exact = !approximate && bm != null && bd != null && em != null && ed != null
     var age = ey - by
     if (exact && (em!! < bm!! || (em == bm && ed!! < bd!!))) age--
     if (age < 0) return ""

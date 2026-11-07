@@ -65,7 +65,7 @@ object Timeline {
         val by = birth.year ?: return ""
         val dy = date.year ?: return ""
         var years = dy - by
-        val exact = birth.month != null && birth.day != null && date.month != null && date.day != null
+        val exact = !birth.isApproximate && !date.isApproximate && birth.month != null && birth.day != null && date.month != null && date.day != null
         if (exact && (date.month!! < birth.month!! || (date.month == birth.month && date.day!! < birth.day!!))) years--
         if (years < 0 || years > 130) return ""
         return if (exact) "Age $years" else "About $years"
