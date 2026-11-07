@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import com.inamibrahim.kinhold.model.AutoBackupPolicy
+import com.inamibrahim.kinhold.model.AutoBackupSizeCap
 import java.io.File
 import java.io.IOException
 
@@ -30,6 +31,7 @@ class AutoBackupStore(private val dir: File) {
     fun prune() {
         val names = list().map { it.name }
         for (n in AutoBackupPolicy.toDelete(names)) File(dir, n).delete()
+        for (n in AutoBackupSizeCap.toDelete(list().associate { it.name to it.length() })) File(dir, n).delete()
         dir.listFiles { f -> f.name.endsWith(".tmp") }?.forEach { it.delete() }
     }
 }
@@ -67,12 +69,14 @@ object ExternalBackupFolder {
         val resolver = context.contentResolver
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         val byName = HashMap<String, String>()
+        val sizes = HashMap<String, Long>()
         resolver.query(
             children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_SIZE),
             null, null, null,
-        )?.use { while (it.moveToNext()) byName[it.getString(1)] = it.getString(0) }
-        for (n in AutoBackupPolicy.toDelete(byName.keys.toList())) {
+        )?.use { while (it.moveToNext()) { byName[it.getString(1)] = it.getString(0); sizes[it.getString(1)] = it.getLong(2) } }
+        val doomed = (AutoBackupPolicy.toDelete(byName.keys.toList()) + AutoBackupSizeCap.toDelete(sizes.filterKeys { AutoBackupPolicy.isAutoBackup(it) })).distinct()
+        for (n in doomed) {
             runCatching { DocumentsContract.deleteDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, byName.getValue(n))) }
         }
     }

@@ -39,3 +39,22 @@ object AutoBackupPolicy {
     fun isDue(lastMillis: Long?, nowMillis: Long, changed: Boolean, force: Boolean = false): Boolean =
         force || (changed && (lastMillis == null || nowMillis - lastMillis >= MIN_GAP_MILLIS))
 }
+
+/** A size limit on top of [AutoBackupPolicy]: when the copies together pass [CAP_BYTES], the oldest go, but the newest [MIN_KEPT] always stay. */
+object AutoBackupSizeCap {
+    const val CAP_BYTES = 200L * 1024 * 1024
+    const val MIN_KEPT = 3
+
+    /** Names (from [sizes], name to bytes) to delete so the total fits [cap], oldest first, never touching the newest [MIN_KEPT]. */
+    fun toDelete(sizes: Map<String, Long>, cap: Long = CAP_BYTES): List<String> {
+        val newestFirst = sizes.keys.mapNotNull { n -> AutoBackupPolicy.timeOf(n)?.let { n to it } }.sortedByDescending { it.second }.map { it.first }
+        var total = newestFirst.sumOf { sizes.getValue(it) }
+        val doomed = ArrayList<String>()
+        for (n in newestFirst.drop(MIN_KEPT).reversed()) {
+            if (total <= cap) break
+            doomed += n
+            total -= sizes.getValue(n)
+        }
+        return doomed
+    }
+}

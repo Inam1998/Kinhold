@@ -101,3 +101,23 @@ class AutoBackupTest {
         assertEquals("short", store.latest()!!.readText())
     }
 }
+
+class AutoBackupSizeCapTest {
+    private fun n(h: Int) = AutoBackupPolicy.fileName(LocalDateTime.of(2026, 11, 7, h, 0))
+
+    @Test
+    fun underTheCapNothingIsDeleted() {
+        val sizes = (1..8).associate { n(it) to 1_000L }
+        assertTrue(com.inamibrahim.kinhold.model.AutoBackupSizeCap.toDelete(sizes, cap = 100_000L).isEmpty())
+    }
+
+    @Test
+    fun overTheCapTheOldestGoFirstAndTheNewestThreeStay() {
+        val sizes = (1..8).associate { n(it) to 100L }
+        val doomed = com.inamibrahim.kinhold.model.AutoBackupSizeCap.toDelete(sizes, cap = 350L)
+        assertEquals(listOf(n(1), n(2), n(3), n(4), n(5)), doomed)
+        val tiny = com.inamibrahim.kinhold.model.AutoBackupSizeCap.toDelete(sizes, cap = 1L)
+        assertEquals(5, tiny.size)
+        assertTrue(n(8) !in tiny && n(7) !in tiny && n(6) !in tiny)
+    }
+}
