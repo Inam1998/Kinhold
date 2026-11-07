@@ -1,0 +1,21 @@
+# Gradle and Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.cxx/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Secrets
+AUTHOR-PHRASE.md
+
+# Editors and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

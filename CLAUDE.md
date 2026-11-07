@@ -1,0 +1,43 @@
+# Kinhold: start here
+
+Native Android app (Kotlin, Jetpack Compose) for building and keeping a private family tree. Working name and brand: **Kinhold**. App ID `com.inamibrahim.kinhold` (permanent once published). Owner GitHub: Inam1998, repo `Kinhold`.
+
+The full plan, research and monetization are in `docs/PLAN.md`. Read it before starting a feature.
+
+## What it is
+A family tree app for people who want to keep their own tree without a subscription. It is free with light ads plus a one-time Pro unlock. It is not a records search service and has no DNA or historical record database. The gap it targets: the big apps (Ancestry 4.0, MyHeritage 3.8, FamilySearch 3.5, all 10M+ downloads) are disliked for price, billing traps, lost trees and a clumsy tree view, while the small apps are basic.
+
+## Rules that must hold
+- **Look:** follow `D:\Android Projects\DESIGN-SYSTEM.md` (dark-first navy, cards, big radii, Inter font, gradient glow, floating nav). Only the accent differs: Kinhold is green. Reference code: `ui/Theme.kt` and `ui/Components.kt`.
+- **Design for all phones:** old and slow phones count as much as new ones (minSdk 26). Bound memory per item, keep main-thread work independent of tree size, and say in replies what was reasoned for weak phones rather than measured.
+- **Never lose a tree.** Data safety is the selling point. Local storage first, atomic saves, automatic backup, GEDCOM and full-file export. Any change that touches stored data needs a migration and a test.
+- **Permissions only when a feature needs them,** each disclosed in the store listing: camera (scan), microphone (stories), contacts (import), internet (ads, only when ads are added). Check the manifest before each release.
+- **No face recognition** in version 1 (privacy and policy risk).
+- **Ads never appear** over the tree view, while editing a person or while recording. Pro removes ads.
+- **Every new feature gets a page in the in-app Help guide** in the same change, with its limits stated (to be created with the first real feature).
+- Commit and push only when the owner asks. Work on a branch, not `main`. Do not put assistant or AI mentions in commits, code or docs.
+- Keep this file and `docs/PLAN.md` current when a feature lands.
+
+## Build and test
+```bash
+cd android
+export JAVA_HOME="C:/Program Files/Android/Android Studio/jbr"
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Do not copy builds into a releases folder until the owner asks. Phone: Samsung S22 (adb serial `R5CT40PGEHF`, the only test phone). In Git Bash set `MSYS_NO_PATHCONV=1` and wrap adb in `timeout`. Tell the owner before driving the phone.
+
+## Status (2026-11-07, version 0.1.0)
+Built: project skeleton, shared theme, a zoomable tree view (`ui/TreeCanvas.kt`) over a generated test family (`model/TestFamily.kt`) with a pure layout (`tree/TreeLayout.kt`, 7 unit tests passing). Pan and pinch, tap to select, size chips (60 to 3,000 people), "Fit all".
+**Tried on the S22 (2026-11-07, `dumpsys gfxinfo` after 10 scripted pan swipes; pinch and tap not tested):** 1,000 people: median 12 ms, 95th 15 ms, 3.9% janky; 3,000 people (start view): median 12 ms, 95th 19 ms, 3.2% janky; 3,000 "Fit all": median 15 ms, 7.3% janky; 60 people fit: median 11 ms. The S22 is the fastest phone we have, and a median of 11 to 15 ms with only about 15 cards on screen means a fixed per-frame cost that has not been profiled; on a phone several times slower this will stutter. Profile before optimising.
+**Layout finding:** a full top-down tree is far too wide to overview (60 people "Fit all" was an unreadable sliver, 3,000 a single line), so the main view is now a focus-person view.
+**Focus view (built 2026-11-07, 17 unit tests pass, seen on the S22):** `tree/FocusLayout.kt` draws 3 rows of ancestors above, the focused person with their first spouse, and 2 rows of descendants below, so the cost depends on those depths and not on the size of the tree. `model/Family.kt` answers parents, spouses and children for anyone and searches by name. Tap a card to move the focus to that person; green "+N" pills mark children not drawn and a small arrow marks ancestors not drawn; "Find" searches by name, "Oldest" jumps to the oldest person, "Recenter" reframes. Checked on the S22 by adb: tap to refocus, Find (opens above the keyboard, picks a result), and fling after a drag (a horizontal 80 ms flick gives about 125 frames, about one second of glide; vertical flicks give fewer frames because the tree stops at its edge). Pinch cannot be driven by adb and has not been tried. Frame times in the focus view, 10 scripted pan swipes: 300 people median 12 ms, 99th 17 ms, 6% janky; 3,000 people median 11 ms, 99th 16 ms, 5.3% janky, so they do not depend on tree size. Giving the canvas its own graphics layer did not change the median, so the fixed per-frame cost of about 11 to 12 ms is not the header redrawing; suspects are the two full-screen radial gradients on the GPU and input dispatch. Profile (Perfetto or `adb shell dumpsys gfxinfo ... framestats`) before optimising, and judge on a slower phone.
+Gotcha: in `adb` tests the chip row scrolls, so tap coordinates move; use `uiautomator dump` and read the `content-desc` bounds of each pill instead of fixed coordinates.
+Known gaps: only the first spouse is shown (no multiple marriages), step and half relations are not modelled, no spouse's parents are shown (refocus on the spouse to see them), test data only.
+
+## Next steps, in order
+1. Check the tree view on the S22 (smoothness, text legibility, tap targets). Add fling.
+2. Real data model and storage (people, relationships, events, media), saved atomically; replace the test family.
+3. Add and edit a person (name, dates, places, notes, photo).
+4. GEDCOM import and export.
+5. Local backup and restore.
+6. Help guide, settings (theme, accent), then ads and Pro, then scan-to-person, voice stories, contact import.

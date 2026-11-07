@@ -1,0 +1,327 @@
+package com.inamibrahim.kinhold.ui
+
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastForEach
+import com.inamibrahim.kinhold.tree.PlacedPerson
+import com.inamibrahim.kinhold.tree.TreeLayout
+import com.inamibrahim.kinhold.tree.TreeMetrics
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+
+/**
+ * Where the tree is on screen. [scale] is the zoom (1 = 100%, one tree unit per dp) and [offset] is where the top-left
+ * of the tree sits in pixels. Both are Compose state read only while drawing, so a pinch or drag redraws the canvas
+ * without recomposing anything.
+ */
+@Stable
+class TreeViewState {
+    var scale by mutableFloatStateOf(1f)
+    var offset by mutableStateOf(Offset.Zero)
+    var size by mutableStateOf(IntSize.Zero)
+    var density = 1f
+    var minScale = 0.05f
+    var flingJob: Job? = null
+    private var bounds = Size.Zero
+
+    /** Screen pixels for one tree unit. */
+    val pxPerUnit: Float get() = scale * density
+
+    /** Frames the tree with the focused person in the middle of the screen, never smaller than readable. */
+    fun show(layout: TreeLayout) {
+        if (size.width == 0 || size.height == 0) return
+        stopFling()
+        bounds = Size(layout.width, layout.height)
+        val w = (layout.width + 2 * MARGIN) * density
+        val h = (layout.height + 2 * MARGIN) * density
+        val fit = min(size.width / w, size.height / h)
+        minScale = (fit * 0.8f).coerceIn(0.05f, READABLE)
+        scale = fit.coerceIn(READABLE, 1f)
+        val s = pxPerUnit
+        // Centred on the focused person across; down, the whole view is centred if it fits, otherwise the focus sits
+        // a little above the middle so the rows below it get the room.
+        val contentHeight = layout.height * s
+        val y = if (contentHeight + 2 * MARGIN * density <= size.height) {
+            (size.height - contentHeight) / 2f
+        } else {
+            size.height * 0.4f - layout.focusY * s
+        }
+        offset = clamp(Offset(size.width / 2f - layout.focusX * s, y))
+    }
+
+    fun stopFling() {
+        flingJob?.cancel()
+        flingJob = null
+    }
+
+    /** Pinch and drag: the point under [centroid] stays under the fingers. */
+    fun transform(centroid: Offset, pan: Offset, zoom: Float) {
+        val newScale = (scale * zoom).coerceIn(minScale, MAX_SCALE)
+        val z = newScale / scale
+        scale = newScale
+        offset = clamp((offset - centroid) * z + centroid + pan)
+    }
+
+    /** Keeps gliding after the finger lifts, slowing down like a real surface. */
+    suspend fun fling(velocity: Offset) {
+        var last = Offset.Zero
+        AnimationState(Offset.VectorConverter, Offset.Zero, AnimationVector2D(velocity.x, velocity.y))
+            .animateDecay(exponentialDecay<Offset>(frictionMultiplier = 1.3f, absVelocityThreshold = 50f)) {
+                val delta = value - last
+                last = value
+                offset = clamp(offset + delta)
+            }
+    }
+
+    /** Keeps some of the tree on screen so it can never be dragged out of sight. */
+    private fun clamp(o: Offset): Offset {
+        val s = pxPerUnit
+        val keep = 96f
+        val loX = min(keep - bounds.width * s, size.width - keep)
+        val hiX = max(keep - bounds.width * s, size.width - keep)
+        val loY = min(keep - bounds.height * s, size.height - keep)
+        val hiY = max(keep - bounds.height * s, size.height - keep)
+        return Offset(o.x.coerceIn(loX, hiX), o.y.coerceIn(loY, hiY))
+    }
+
+    companion object {
+        const val MAX_SCALE = 2.5f
+        const val READABLE = 0.7f
+        const val MARGIN = 24f
+    }
+}
+
+private val NameStyle = TextStyle(fontFamily = AppFont, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+private val YearsStyle = TextStyle(fontFamily = AppFont, fontSize = 11.sp, fontWeight = FontWeight.Normal)
+private val BadgeStyle = TextStyle(fontFamily = AppFont, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+
+/** Text is measured once in tree units (1 px = 1 unit) and drawn on the scaled canvas, so zooming never re-measures. */
+private val UnitDensity = Density(1f, 1f)
+
+/**
+ * The zoomable tree around one person. Tapping someone else calls [onFocus]. Only boxes that are on screen are drawn,
+ * and detail is dropped when they are too small to read.
+ */
+@Composable
+fun TreeCanvas(
+    layout: TreeLayout,
+    state: TreeViewState,
+    onFocus: (PlacedPerson) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    state.density = LocalDensity.current.density
+    val scope = rememberCoroutineScope()
+    val measurer = rememberTextMeasurer(cacheSize = 4)
+    val names = remember(layout) { HashMap<Int, TextLayoutResult>() }
+    val years = remember(layout) { HashMap<Int, TextLayoutResult>() }
+    val badges = remember(layout) { HashMap<String, TextLayoutResult>() }
+
+    Canvas(
+        modifier
+            .fillMaxSize()
+            // Cards pan beyond the canvas, so they must be cut at its edge. The layer is also what keeps a pan or
+            // pinch from redrawing the header and background gradients behind it on every frame.
+            .clipToBounds()
+            .graphicsLayer()
+            .onSizeChanged { state.size = it }
+            .pointerInput(Unit) {
+                detectTreeGestures(
+                    onDown = { state.stopFling() },
+                    onTransform = { centroid, pan, zoom -> state.transform(centroid, pan, zoom) },
+                    onFling = { velocity -> state.flingJob = scope.launch { state.fling(velocity) } },
+                )
+            }
+            .pointerInput(layout) {
+                detectTapGestures { tap ->
+                    val s = state.pxPerUnit
+                    val wx = (tap.x - state.offset.x) / s
+                    val wy = (tap.y - state.offset.y) / s
+                    layout.people.firstOrNull {
+                        wx >= it.x && wx <= it.x + TreeMetrics.NODE_W && wy >= it.y && wy <= it.y + TreeMetrics.NODE_H
+                    }?.let(onFocus)
+                }
+            },
+    ) {
+        val s = state.pxPerUnit
+        val off = state.offset
+        val left = -off.x / s
+        val top = -off.y / s
+        val right = (size.width - off.x) / s
+        val bottom = (size.height - off.y) / s
+        val nodeScreenW = TreeMetrics.NODE_W * s
+
+        val lineColor = Palette.TextMuted.copy(alpha = 0.5f)
+        val cardColor = Palette.Surface
+        val focusColor = Palette.SurfaceHigh
+        val textColor = Palette.Text
+        val mutedColor = Palette.TextMuted
+        val accent = Palette.Accent
+        val badgeColor = Palette.AccentDeep
+        val sky = Tones.Sky
+        val rose = Tones.Rose
+
+        withTransform({
+            translate(left = off.x, top = off.y)
+            scale(scaleX = s, scaleY = s, pivot = Offset.Zero)
+        }) {
+            val stroke = max(1.6f, 1f / s)
+            val e = layout.edges
+            var i = 0
+            while (i < e.size) {
+                val x1 = e[i]
+                val y1 = e[i + 1]
+                val x2 = e[i + 2]
+                val y2 = e[i + 3]
+                if (max(x1, x2) >= left && min(x1, x2) <= right && max(y1, y2) >= top && min(y1, y2) <= bottom) {
+                    drawLine(lineColor, Offset(x1, y1), Offset(x2, y2), strokeWidth = stroke)
+                }
+                i += 4
+            }
+
+            val radius = CornerRadius(10f)
+            val boxSize = Size(TreeMetrics.NODE_W, TreeMetrics.NODE_H)
+            for (p in layout.people) {
+                if (p.x > right || p.x + TreeMetrics.NODE_W < left || p.y > bottom || p.y + TreeMetrics.NODE_H < top) continue
+                val tone = if (p.person.female) rose else sky
+                val topLeft = Offset(p.x, p.y)
+                if (nodeScreenW < 26f) {
+                    // Too small for a card: a coloured block still shows where the family is wide or narrow.
+                    drawRoundRect(tone.copy(alpha = 0.85f), topLeft, boxSize, radius)
+                    continue
+                }
+                val isFocus = p.person.id == layout.focusId
+                drawRoundRect(if (isFocus) focusColor else cardColor, topLeft, boxSize, radius)
+                drawRoundRect(tone, topLeft, Size(5f, TreeMetrics.NODE_H), CornerRadius(2.5f))
+                if (isFocus) drawRoundRect(accent, topLeft, boxSize, radius, style = Stroke(width = 2.5f))
+                if (nodeScreenW >= 64f) {
+                    val name = names.getOrPut(p.person.id) { measurer.measureLine(p.person.name, NameStyle) }
+                    drawText(name, textColor, Offset(p.x + 14f, p.y + 9f))
+                    if (nodeScreenW >= 100f) {
+                        val y = years.getOrPut(p.person.id) { measurer.measureLine(p.person.years(), YearsStyle) }
+                        drawText(y, mutedColor, Offset(p.x + 14f, p.y + 31f))
+                    }
+                }
+                if (p.moreBelow > 0) {
+                    // A small pill on the bottom edge: this many children are one tap away.
+                    val label = badges.getOrPut("+${p.moreBelow}") { measurer.measureLine("+${p.moreBelow}", BadgeStyle, wide = true) }
+                    val w = label.size.width + 14f
+                    val pillTop = Offset(p.x + TreeMetrics.NODE_W / 2 - w / 2, p.y + TreeMetrics.NODE_H - 8f)
+                    drawRoundRect(badgeColor, pillTop, Size(w, 17f), CornerRadius(8.5f))
+                    drawText(label, Color.White, Offset(pillTop.x + 7f, pillTop.y + 3f))
+                }
+                if (p.moreAbove) {
+                    // A little arrow above the card: more ancestors are one tap away.
+                    val cx = p.x + TreeMetrics.NODE_W / 2
+                    drawLine(accent, Offset(cx - 7f, p.y - 4f), Offset(cx, p.y - 11f), strokeWidth = 2.5f, cap = StrokeCap.Round)
+                    drawLine(accent, Offset(cx + 7f, p.y - 4f), Offset(cx, p.y - 11f), strokeWidth = 2.5f, cap = StrokeCap.Round)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pan and pinch like `detectTransformGestures`, plus the speed of a one-finger drag when the finger lifts, so the
+ * tree can glide on. A tap never reaches here as a gesture: nothing is consumed until the touch slop is passed.
+ */
+private suspend fun PointerInputScope.detectTreeGestures(
+    onDown: () -> Unit,
+    onTransform: (centroid: Offset, pan: Offset, zoom: Float) -> Unit,
+    onFling: (velocity: Offset) -> Unit,
+) {
+    awaitEachGesture {
+        var zoom = 1f
+        var pan = Offset.Zero
+        var pastSlop = false
+        var multiTouch = false
+        val slop = viewConfiguration.touchSlop
+        val tracker = VelocityTracker()
+        awaitFirstDown(requireUnconsumed = false)
+        onDown()
+        do {
+            val event = awaitPointerEvent()
+            val cancelled = event.changes.fastAny { it.isConsumed }
+            if (!cancelled) {
+                if (event.changes.count { it.pressed } > 1) multiTouch = true
+                val zoomChange = event.calculateZoom()
+                val panChange = event.calculatePan()
+                if (!pastSlop) {
+                    zoom *= zoomChange
+                    pan += panChange
+                    val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                    if (abs(1 - zoom) * centroidSize > slop || pan.getDistance() > slop) pastSlop = true
+                }
+                if (pastSlop) {
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    if (zoomChange != 1f || panChange != Offset.Zero) onTransform(centroid, panChange, zoomChange)
+                    event.changes.fastForEach { if (it.positionChanged()) it.consume() }
+                    event.changes.firstOrNull { it.pressed }?.let { tracker.addPosition(it.uptimeMillis, it.position) }
+                }
+            }
+        } while (!cancelled && event.changes.fastAny { it.pressed })
+        if (pastSlop && !multiTouch) {
+            val v = tracker.calculateVelocity()
+            onFling(Offset(v.x, v.y))
+        }
+    }
+}
+
+private fun TextMeasurer.measureLine(text: String, style: TextStyle, wide: Boolean = false): TextLayoutResult = measure(
+    text = text,
+    style = style,
+    overflow = TextOverflow.Ellipsis,
+    maxLines = 1,
+    constraints = Constraints(maxWidth = if (wide) 200 else (TreeMetrics.NODE_W - 24f).toInt()),
+    density = UnitDensity,
+)
