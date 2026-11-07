@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,22 +39,23 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
-import com.inamibrahim.kinhold.model.TestFamily
 import com.inamibrahim.kinhold.tree.layoutFocus
 
-private val Sizes = listOf(60, 300, 1000, 3000)
-
 /**
- * The first screen: the family around one person. Tap anyone to move the focus to them, or use Find. The family is a
- * generated test family for now; real people replace it later.
+ * The family around one person. Tap anyone to move the focus to them, or use Find. The focus card below the tree has
+ * the buttons to change that person or add a relative.
  */
 @Composable
-fun TreeScreen() {
-    var count by rememberSaveable { mutableIntStateOf(300) }
-    val family = remember(count) { TestFamily.generateFamily(count) }
-    var focusId by rememberSaveable(count) { mutableIntStateOf(family.defaultFocus().id) }
+fun TreeScreen(
+    family: Family,
+    focusId: Int,
+    onFocus: (Int) -> Unit,
+    onAdd: (Relation) -> Unit,
+    onEdit: (Int) -> Unit,
+) {
     var searching by rememberSaveable { mutableStateOf(false) }
     val layout = remember(family, focusId) { layoutFocus(family, focusId) }
     val state = remember { TreeViewState() }
@@ -68,7 +68,7 @@ fun TreeScreen() {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
             Text(
-                "%,d people in this tree".format(family.size),
+                "%,d %s in this tree".format(family.size, if (family.size == 1) "person" else "people"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.TextMuted,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
@@ -79,17 +79,15 @@ fun TreeScreen() {
             ) {
                 Pill("Find", selected = searching, onClick = { searching = !searching })
                 Pill("Recenter", selected = false, onClick = { state.show(layout) })
-                Pill("Oldest", selected = false, onClick = { focusId = family.oldest().id })
-                // Test families of different sizes, until real people replace them.
-                for (n in Sizes) Pill("%,d".format(n), selected = n == count, onClick = { count = n })
+                Pill("Oldest", selected = false, onClick = { family.oldest()?.let { onFocus(it.id) } })
             }
             Box(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
-                TreeCanvas(layout = layout, state = state, onFocus = { focusId = it.person.id })
+                TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
                 if (searching) {
                     SearchPanel(
                         family = family,
                         onPick = {
-                            focusId = it.id
+                            onFocus(it.id)
                             searching = false
                         },
                         modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 20.dp),
@@ -101,6 +99,8 @@ fun TreeScreen() {
                 FocusCard(
                     family = family,
                     person = focus,
+                    onAdd = onAdd,
+                    onEdit = { onEdit(focus.id) },
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -111,27 +111,42 @@ fun TreeScreen() {
     }
 }
 
-/** Who the tree is centred on, and how many relatives they have. */
+/** Who the tree is centred on, how many relatives they have, and the buttons to change them or add a relative. */
 @Composable
-private fun FocusCard(family: Family, person: Person, modifier: Modifier = Modifier) {
+private fun FocusCard(
+    family: Family,
+    person: Person,
+    onAdd: (Relation) -> Unit,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val parents = family.parentsOf(person.id).size
     val spouses = family.spousesOf(person.id).size
     val children = family.childrenOf(person.id).size
     AppCard(modifier) {
         Column(Modifier.padding(20.dp)) {
             Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text)
-            Text(
-                person.years(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.TextMuted,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+            if (person.years().isNotEmpty()) {
+                Text(
+                    person.years(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Palette.TextMuted,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             Text(
                 "${plural(parents, "parent")}  ·  ${plural(spouses, "spouse")}  ·  ${plural(children, "child", "children")}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.Accent,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 8.dp, bottom = 14.dp),
             )
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("Edit", selected = false, onClick = onEdit)
+                // A person has at most two parents. Several spouses are not drawn yet, so one is offered.
+                if (parents < 2) Pill("+ Parent", selected = false, onClick = { onAdd(Relation.ParentOf(person.id)) })
+                if (spouses == 0) Pill("+ Spouse", selected = false, onClick = { onAdd(Relation.SpouseOf(person.id)) })
+                Pill("+ Child", selected = false, onClick = { onAdd(Relation.ChildOf(person.id)) })
+            }
         }
     }
 }
@@ -190,8 +205,10 @@ private fun SearchPanel(family: Family, onPick: (Person) -> Unit, modifier: Modi
                         Text(p.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                         // Several people can share a name, so say whose child each one is.
                         val parents = family.parentsOf(p.id)
-                        val line = if (parents.isEmpty()) p.years() else "${p.years()}  ·  child of ${parents.joinToString(" & ") { it.name }}"
-                        Text(line, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                        val details = listOf(p.years(), if (parents.isEmpty()) "" else "child of ${parents.joinToString(" & ") { it.name }}")
+                            .filter { it.isNotEmpty() }
+                            .joinToString("  ·  ")
+                        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                     }
                 }
             }

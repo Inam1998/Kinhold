@@ -13,7 +13,7 @@ class FocusLayoutTest {
 
     @Test
     fun familyKnowsParentsSpousesAndChildren() {
-        val focus = family.defaultFocus()
+        val focus = family.defaultFocus()!!
         assertTrue(family.parentsOf(focus.id).isNotEmpty())
         assertTrue(family.childrenOf(focus.id).isNotEmpty())
         // Every child lists its parent, and every parent lists the child.
@@ -24,7 +24,7 @@ class FocusLayoutTest {
 
     @Test
     fun theFocusedPersonIsDrawnOnceInTheMiddleRow() {
-        val focus = family.defaultFocus()
+        val focus = family.defaultFocus()!!
         val layout = layoutFocus(family, focus.id)
         val boxes = layout.people.filter { it.person.id == focus.id }
         assertEquals(1, boxes.size)
@@ -34,7 +34,7 @@ class FocusLayoutTest {
 
     @Test
     fun ancestorsAreAboveAndDescendantsBelow() {
-        val focus = family.defaultFocus()
+        val focus = family.defaultFocus()!!
         val layout = layoutFocus(family, focus.id)
         val focusBox = layout.people.first { it.person.id == focus.id }
         for (p in family.parentsOf(focus.id)) {
@@ -74,7 +74,7 @@ class FocusLayoutTest {
     @Test
     fun theViewStaysSmallEvenForAHugeTree() {
         val big = TestFamily.generateFamily(3000)
-        val layout = layoutFocus(big, big.defaultFocus().id)
+        val layout = layoutFocus(big, big.defaultFocus()!!.id)
         // Three rows up and two down: a few dozen people, not thousands.
         assertTrue("Drew ${layout.people.size} people", layout.people.size < 120)
         assertTrue(layout.generations <= 6)
@@ -82,7 +82,7 @@ class FocusLayoutTest {
 
     @Test
     fun peopleBeyondTheEdgeAreFlagged() {
-        val focus = family.defaultFocus()
+        val focus = family.defaultFocus()!!
         val layout = layoutFocus(family, focus.id, ancestorDepth = 1, descendantDepth = 1)
         // With one row each way, grandchildren exist but are not drawn.
         assertTrue(layout.people.any { it.moreBelow > 0 })
@@ -91,7 +91,7 @@ class FocusLayoutTest {
 
     @Test
     fun noOneIsMarkedMoreBelowWhenAllChildrenAreShown() {
-        val focus = family.defaultFocus()
+        val focus = family.defaultFocus()!!
         val layout = layoutFocus(family, focus.id, descendantDepth = 2)
         val box = layout.people.first { it.person.id == focus.id }
         assertEquals(0, box.moreBelow)
@@ -110,7 +110,7 @@ class FocusLayoutTest {
     fun layoutIsFastForALargeFamily() {
         val big = TestFamily.generateFamily(3000)
         val start = System.nanoTime()
-        repeat(50) { layoutFocus(big, big.defaultFocus().id) }
+        repeat(50) { layoutFocus(big, big.defaultFocus()!!.id) }
         val ms = (System.nanoTime() - start) / 1_000_000.0 / 50
         assertTrue("Took $ms ms per layout", ms < 25.0)
     }

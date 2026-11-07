@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
+import com.inamibrahim.kinhold.model.Sex
 import com.inamibrahim.kinhold.tree.PlacedPerson
 import com.inamibrahim.kinhold.tree.TreeLayout
 import com.inamibrahim.kinhold.tree.TreeMetrics
@@ -233,7 +234,11 @@ fun TreeCanvas(
             val boxSize = Size(TreeMetrics.NODE_W, TreeMetrics.NODE_H)
             for (p in layout.people) {
                 if (p.x > right || p.x + TreeMetrics.NODE_W < left || p.y > bottom || p.y + TreeMetrics.NODE_H < top) continue
-                val tone = if (p.person.female) rose else sky
+                val tone = when (p.person.sex) {
+                    Sex.Male -> sky
+                    Sex.Female -> rose
+                    Sex.Unknown -> mutedColor
+                }
                 val topLeft = Offset(p.x, p.y)
                 if (nodeScreenW < 26f) {
                     // Too small for a card: a coloured block still shows where the family is wide or narrow.
@@ -247,7 +252,7 @@ fun TreeCanvas(
                 if (nodeScreenW >= 64f) {
                     val name = names.getOrPut(p.person.id) { measurer.measureLine(p.person.name, NameStyle) }
                     drawText(name, textColor, Offset(p.x + 14f, p.y + 9f))
-                    if (nodeScreenW >= 100f) {
+                    if (nodeScreenW >= 100f && p.person.years().isNotEmpty()) {
                         val y = years.getOrPut(p.person.id) { measurer.measureLine(p.person.years(), YearsStyle) }
                         drawText(y, mutedColor, Offset(p.x + 14f, p.y + 31f))
                     }

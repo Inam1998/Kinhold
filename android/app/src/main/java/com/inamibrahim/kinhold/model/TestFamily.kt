@@ -3,7 +3,7 @@ package com.inamibrahim.kinhold.model
 import java.util.Random
 
 /**
- * Makes an invented family of any size, so the tree can be checked on a phone without anyone's real data.
+ * Makes an invented family of any size, so the app can be tried and measured without anyone's real data.
  * The same seed always gives the same family.
  */
 object TestFamily {
@@ -34,7 +34,14 @@ object TestFamily {
         fun person(female: Boolean, born: Int, surname: String): Person {
             val first = (if (female) femaleNames else maleNames).let { it[rnd.nextInt(it.size)] }
             val death = born + 50 + rnd.nextInt(40)
-            return Person(nextId++, "$first $surname", born, if (death < NOW) death else null, female)
+            return Person(
+                id = nextId++,
+                given = first,
+                surname = surname,
+                sex = if (female) Sex.Female else Sex.Male,
+                born = born,
+                died = if (death < NOW) death else null,
+            )
         }
 
         val rootSurname = surnames[rnd.nextInt(surnames.size)]
@@ -52,14 +59,15 @@ object TestFamily {
             for (unit in level) {
                 if (count >= target) break
                 val head = unit.partners[0]
+                val headBorn = head.born ?: 1800
                 repeat(childCount(rnd)) {
                     if (count >= target) return@repeat
-                    val born = minOf(head.born + 22 + rnd.nextInt(10), NOW - rnd.nextInt(3))
+                    val born = minOf(headBorn + 22 + rnd.nextInt(10), NOW - rnd.nextInt(3))
                     val child = person(rnd.nextBoolean(), born, rootSurname)
                     count++
                     val partners = arrayListOf(child)
                     if (count < target && born + 18 < NOW && rnd.nextInt(100) < 70) {
-                        partners += person(!child.female, born - 3 + rnd.nextInt(7), surnames[rnd.nextInt(surnames.size)])
+                        partners += person(!child.female(), born - 3 + rnd.nextInt(7), surnames[rnd.nextInt(surnames.size)])
                         count++
                     }
                     val childUnit = FamilyUnit(partners)
@@ -72,6 +80,8 @@ object TestFamily {
         }
         return root
     }
+
+    private fun Person.female(): Boolean = sex == Sex.Female
 
     private fun childCount(rnd: Random): Int {
         val r = rnd.nextInt(100)

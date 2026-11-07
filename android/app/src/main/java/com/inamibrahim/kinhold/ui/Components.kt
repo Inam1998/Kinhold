@@ -93,6 +93,27 @@ fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
     }
 }
 
+/** The one main action on a screen: a tall, fully round button in the solid accent. */
+@Composable
+fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    Box(
+        modifier
+            .height(52.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (enabled) Palette.Accent else Palette.SurfaceHigh)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 28.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = if (enabled) Palette.OnAccent else Palette.TextMuted,
+        )
+    }
+}
+
 /** A lifted rounded surface. Everything sits on cards, with no divider lines between rows. */
 @Composable
 fun AppCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
