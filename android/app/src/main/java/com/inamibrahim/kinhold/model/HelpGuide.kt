@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { Lock, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { Lock, Relationship, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -243,6 +243,22 @@ object HelpGuide {
                 "If your phone has no screen lock, a forgotten PIN cannot be reset, and the only way back in is to clear Kinhold's data, which deletes the tree. Kinhold warns you before you turn the lock on, and a backup folder lets you restore.",
                 "After five wrong tries in a row you must wait, 30 seconds at first and longer after more wrong tries.",
                 "The PIN is stored on this phone as a scrambled value, not in your tree or in backups, so restoring a backup never changes the lock.",
+            ),
+        ),
+        HelpPage(
+            topic = HelpTopic.Relationship,
+            title = "How are we related?",
+            summary = "See how any two people in your tree are related.",
+            sections = listOf(
+                HelpSection("Finding a relationship", "Open More, then How are we related. Choose a first and a second person, and Kinhold says how the second is related to the first, such as uncle, first cousin or sister-in-law, and names the people in between."),
+                HelpSection("Family words", "Where there is a common family word in Urdu and Punjabi, it is shown too: chacha and tau, mamu, phupho, khala, dada, nana, bhatija, bhanja, the cousin words such as chachazad, and a few words for in-laws."),
+                HelpSection("On a person's page", "Once you have said who you are in Settings, a person's Details page shows how they are related to you."),
+            ),
+            limits = listOf(
+                "It can only use the links in your tree. If a parent or a marriage is missing, two people who really are related may show as not connected.",
+                "Family words need the right sex to be recorded, and the uncle's birth year to tell chacha from tau. When Kinhold cannot tell, it shows no family word or both.",
+                "Only the common close relations have family words. Distant cousins and relatives by marriage beyond the in-laws shown here have the English name only.",
+                "Half-relations are named in English only where a half-sibling is involved.",
             ),
         ),
         HelpPage(

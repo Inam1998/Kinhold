@@ -9,6 +9,11 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
@@ -63,6 +68,9 @@ sealed interface Screen {
 
     data object More : Screen
 
+    /** How two people are related (the two people can be changed on the screen). */
+    data class Related(val first: Int, val second: Int) : Screen
+
     /** Setting up, changing or turning off the optional PIN lock. */
     data class LockSetup(val mode: LockSetupMode) : Screen
 
@@ -87,6 +95,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help -> "help"
             Screen.Settings -> "settings"
             Screen.More -> "more"
+            is Screen.Related -> "relation|${s.first}|${s.second}"
             is Screen.LockSetup -> "lock|${s.mode.name}"
             is Screen.Person -> "person|${s.id}"
             is Screen.Share -> "share|${s.id}"
@@ -108,6 +117,9 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Settings
         } else if (text.startsWith("lock|")) {
             Screen.LockSetup(LockSetupMode.entries.firstOrNull { it.name == text.substringAfter("|") } ?: LockSetupMode.On)
+        } else if (text.startsWith("relation|")) {
+            val p = text.split("|")
+            Screen.Related(p.getOrNull(1)?.toIntOrNull() ?: -1, p.getOrNull(2)?.toIntOrNull() ?: -1)
         } else if (text == "more") {
             Screen.More
         } else if (text == "merge") {
@@ -212,11 +224,15 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.More -> {
             BackHandler { screen = Screen.Tree }
+            val status = vm.lastBackup?.let { "Last backup: ${describeAge(it, System.currentTimeMillis())}" } ?: "Not backed up yet"
+            val firstFocus = family.people.firstOrNull { it.isMe }?.id ?: focusId
             MoreScreen(
-                backupStatus = vm.lastBackup?.let { "Last backup: ${describeAge(it, System.currentTimeMillis())}" } ?: "Not backed up yet",
-                onBackup = { screen = Screen.Backup },
-                onSettings = { screen = Screen.Settings },
-                onHelp = { screen = Screen.Help },
+                items = listOf(
+                    MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Save, restore, merge and import") { screen = Screen.Backup },
+                    MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = Screen.Related(firstFocus, focusId) },
+                    MoreItem(Icons.Filled.Settings, Tones.Sky, "Settings", "Who you are, app lock, theme and accent colour") { screen = Screen.Settings },
+                    MoreItem(Icons.Filled.Info, Tones.Amber, "How Kinhold works", "A page for every feature, with its limits") { screen = Screen.Help },
+                ),
                 onBack = { screen = Screen.Tree },
             )
         }
@@ -224,6 +240,18 @@ private fun KinholdContent(vm: KinholdViewModel) {
         target is Screen.Help -> {
             BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
             HelpScreen(listScroll = scrolls.scroll("help"), onClose = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+        }
+
+        target is Screen.Related -> {
+            val rel = target as Screen.Related
+            BackHandler { screen = Screen.More }
+            if (family.size > 0) {
+                val me = family.people.firstOrNull { it.isMe }?.id
+                val fallback = focusId.takeIf { it in family } ?: family.people.first().id
+                RelationScreen(family, rel.first.takeIf { it in family } ?: me ?: fallback, rel.second.takeIf { it in family } ?: fallback, onBack = { screen = Screen.More })
+            } else {
+                screen = Screen.Tree
+            }
         }
 
         target is Screen.LockSetup -> {
@@ -473,7 +501,7 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
 private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form -> 2
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -505,6 +533,7 @@ private fun Screen.key(): String = when (this) {
     Screen.Help -> "help"
     Screen.Merge -> "merge"
     is Screen.LockSetup -> "locksetup"
+    is Screen.Related -> "relation"
     is Screen.Person -> "person"
     is Screen.Share -> "share"
     is Screen.Form -> "form"

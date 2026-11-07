@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -28,16 +29,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-/** Everything that is not the tree itself, in one place: backup and sharing, settings, and the Help guide. */
+/** One entry of the More screen. */
+class MoreItem(val icon: ImageVector, val tone: Color, val title: String, val subtitle: String, val onClick: () -> Unit)
+
 @Composable
-fun MoreScreen(backupStatus: String, onBackup: () -> Unit, onSettings: () -> Unit, onHelp: () -> Unit, onBack: () -> Unit) {
+fun MoreScreen(items: List<MoreItem>, onBack: () -> Unit) {
     ScreenBackground {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp)) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp)) {
             ScreenHeader("Kinhold", "More", Modifier.padding(top = 12.dp, bottom = 20.dp))
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MoreRow(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$backupStatus. Save, restore, merge and import", onBackup)
-                MoreRow(Icons.Filled.Settings, Tones.Sky, "Settings", "Who you are, theme and accent colour", onSettings)
-                MoreRow(Icons.Filled.Info, Tones.Amber, "How Kinhold works", "A page for every feature, with its limits", onHelp)
+                for (item in items) MoreRow(item.icon, item.tone, item.title, item.subtitle, item.onClick)
             }
             DialogButton("Back to the tree", onBack, Modifier.fillMaxWidth().padding(top = 20.dp), kind = ButtonKind.Neutral)
             Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp)) {}

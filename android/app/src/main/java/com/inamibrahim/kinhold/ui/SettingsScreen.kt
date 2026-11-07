@@ -142,7 +142,7 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
             Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
         }
     }
-    if (picking) MePicker(family, { onChooseMe(it); picking = false }, { picking = false })
+    if (picking) PersonPickerDialog(family, "Which card is you?", { onChooseMe(it); picking = false }, { picking = false })
 }
 
 @Composable
@@ -162,14 +162,14 @@ private fun Swatch(choice: AccentChoice, selected: Boolean, onClick: () -> Unit)
 
 /** A search box and the matching people, to pick which card is you. */
 @Composable
-private fun MePicker(family: Family, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+fun PersonPickerDialog(family: Family, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val results = remember(family, query) { if (query.isBlank()) family.people.sortedBy { it.name }.take(30) else family.search(query) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.Surface,
         shape = RoundedCornerShape(28.dp),
-        title = { Text("Which card is you?", color = Palette.Text) },
+        title = { Text(title, color = Palette.Text) },
         text = {
             Column {
                 Field("Search by name", query, { query = it }, Modifier.fillMaxWidth())

@@ -116,6 +116,9 @@ fun PersonPageScreen(
                             if (dates.isNotEmpty()) Text(dates, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                             val age = person.ageText(java.time.LocalDate.now())
                             if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber)
+                            val meId = remember(family) { family.people.firstOrNull { it.isMe }?.id }
+                            val relation = remember(family, person.id) { if (meId != null && meId != person.id) com.inamibrahim.kinhold.model.Relationships.between(family, meId, person.id) else null }
+                            relation?.let { r -> Text("Your ${r.english.replaceFirstChar(Char::lowercase)}" + (r.local?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodyMedium, color = Tones.Rose) }
                             Text(
                                 run {
                                     fun n(c: Int, one: String, many: String) = "$c ${if (c == 1) one else many}"
