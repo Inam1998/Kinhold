@@ -109,15 +109,24 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
     if (month != 0 && !canMonth) month = 0
     val maxDay = if (month in 1..12) DAYS_IN_MONTH[month - 1] else 0
     if (day > maxDay) day = 0
-    val preview = PartialDate(y, month.takeIf { it > 0 }, day.takeIf { it > 0 }).text().ifEmpty { "No date" }
+    var hijri by rememberSaveable { mutableStateOf(false) }
+    val shown = PartialDate(y, month.takeIf { it > 0 }, day.takeIf { it > 0 })
+    val preview = shown.text().ifEmpty { "No date" }
+    if (hijri) HijriPickerDialog({ onDone(it) }, { hijri = false })
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.Surface,
         shape = RoundedCornerShape(28.dp),
-        title = { Text(preview, color = Palette.Accent) },
+        title = {
+            Column {
+                Text(preview, color = Palette.Accent)
+                com.inamibrahim.kinhold.model.HijriDates.describe(shown)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted) }
+            }
+        },
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                DialogButton("Enter a Hijri date instead", { hijri = true }, kind = ButtonKind.Neutral)
                 Label("Year")
                 Field("Year (for example 1950)", year, { year = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,4 +371,48 @@ DialogButton("Remove this field", { onChange(fields.filterIndexed { j, _ -> j !=
         }
         if (fields.size < Limits.FIELDS) Pill("+ Add a field", false, { onChange(fields + CustomField()) })
     }
+}
+
+/** Enter a Hijri (Umm al-Qura) date; it is converted to the Gregorian day it falls on, which is what Kinhold stores. */
+@Composable
+private fun HijriPickerDialog(onDone: (PartialDate) -> Unit, onDismiss: () -> Unit) {
+    var year by rememberSaveable { mutableStateOf("") }
+    var month by rememberSaveable { mutableStateOf(0) }
+    var day by rememberSaveable { mutableStateOf(0) }
+    val hy = year.toIntOrNull()
+    val converted = if (hy != null && month > 0 && day > 0) com.inamibrahim.kinhold.model.HijriDates.partialFromHijri(hy, month, day) else null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.Surface,
+        shape = RoundedCornerShape(28.dp),
+        title = { Text("Hijri date", color = Palette.Accent) },
+        text = {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("Hijri year (for example 1367)", year, { year = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number)
+                Label("Month")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.inamibrahim.kinhold.model.HijriDates.MONTH_NAMES.forEachIndexed { i, name -> PickChip(name, month == i + 1, true) { month = if (month == i + 1) 0 else i + 1 } }
+                }
+                Label("Day")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (d in 1..30) PickChip("$d", day == d, true, round = true) { day = if (day == d) 0 else d }
+                }
+                Text(
+                    when {
+                        converted != null -> "That is ${converted.text()} in the Gregorian calendar."
+                        hy != null && month > 0 && day > 0 -> "That Hijri date does not exist (years 1300 to 1600 only)."
+                        else -> "A Hijri date needs a year, a month and a day."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (converted != null) Palette.Accent else Palette.TextMuted,
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
+                DialogButton("Use this date", { converted?.let(onDone) }, kind = ButtonKind.Primary, enabled = converted != null)
+            }
+        },
+    )
 }

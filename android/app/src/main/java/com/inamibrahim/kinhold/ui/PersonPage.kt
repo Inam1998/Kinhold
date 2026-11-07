@@ -163,8 +163,9 @@ fun PersonPageScreen(
 private fun buildItems(family: Family, person: Person, details: PersonDetails?): List<PageItem> {
     val out = ArrayList<PageItem>()
     out += PageItem.Heading("Life")
-    val born = listOf(person.birthDate.text(), person.birthPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
-    val died = listOf(person.deathDate.text(), person.deathPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
+    fun withHijri(d: com.inamibrahim.kinhold.model.PartialDate) = d.text() + (if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.describe(d)?.let { " ($it)" }.orEmpty() else "")
+    val born = listOf(withHijri(person.birthDate), person.birthPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
+    val died = listOf(withHijri(person.deathDate), person.deathPlace).filter { it.isNotBlank() }.joinToString("  ·  ")
     if (born.isNotEmpty()) out += PageItem.Line("Born", born)
     if (died.isNotEmpty()) out += PageItem.Line("Died", died)
     if (person.phone.isNotBlank()) out += PageItem.Line("Phone", person.phone)

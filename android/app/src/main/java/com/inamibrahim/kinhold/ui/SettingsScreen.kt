@@ -138,6 +138,13 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                 color = Palette.TextMuted,
                 modifier = Modifier.padding(start = 4.dp, top = 4.dp),
             )
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Settings, Tones.Amber, 36.dp); Text("Dates", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text("Show the Hijri date beside a full date, for example on the Details page.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                    Pill(if (AppSettings.showHijri) "Hijri dates: on" else "Hijri dates: off", AppSettings.showHijri, { AppSettings.chooseShowHijri(!AppSettings.showHijri) })
+                }
+            }
             Pill("Back", false, onBack, Modifier.fillMaxWidth().padding(top = 20.dp))
             Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
         }

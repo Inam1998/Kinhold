@@ -14,6 +14,15 @@ object AppSettings {
     private const val KEY_MODE = "theme_mode"
     private const val KEY_ACCENT = "accent"
 
+    /** Whether the Hijri equivalent is shown beside full dates. */
+    var showHijri by mutableStateOf(false)
+        private set
+
+    fun chooseShowHijri(value: Boolean) {
+        showHijri = value
+        context?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putBoolean("show_hijri", value)?.apply()
+    }
+
     var mode by mutableStateOf(ThemeMode.Dark)
         private set
 
@@ -24,6 +33,7 @@ object AppSettings {
         context = appContext.applicationContext
         val prefs = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         mode = ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) } ?: ThemeMode.Dark
+        showHijri = prefs.getBoolean("show_hijri", false)
         Palette.accent = AccentChoice.entries.firstOrNull { it.name == prefs.getString(KEY_ACCENT, null) } ?: AccentChoice.Green
     }
 

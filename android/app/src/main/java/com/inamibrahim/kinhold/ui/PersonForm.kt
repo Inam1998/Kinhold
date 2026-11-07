@@ -401,7 +401,7 @@ internal fun Field(
             onValueChange = onChange,
             singleLine = singleLine,
             minLines = if (singleLine) 1 else 3,
-            textStyle = TextStyle(fontFamily = AppFont, fontSize = 16.sp, color = Palette.Text),
+            textStyle = TextStyle(fontFamily = AppFont, fontSize = 16.sp, color = Palette.Text, textDirection = androidx.compose.ui.text.style.TextDirection.Content),
             cursorBrush = SolidColor(Palette.Accent),
             keyboardOptions = KeyboardOptions(
                 keyboardType = keyboardType,
