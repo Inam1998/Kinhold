@@ -60,6 +60,7 @@ class DeletedPerson(
     val partnerIds: List<Int>,
     val photo: PreparedPhoto? = null,
     val details: PersonDetails = PersonDetails.Empty,
+    val gallery: List<PreparedPhoto> = emptyList(),
 )
 
 /**
@@ -150,6 +151,29 @@ class FamilyRepository(
         out
     }
 
+    /** The extra photos of a person as small pictures for the grid. Safe to call from any thread. */
+    suspend fun gallery(personId: Int): List<GalleryItem> = withContext(Dispatchers.IO) {
+        val out = ArrayList<GalleryItem>()
+        helper.readableDatabase.rawQuery("SELECT id, thumb FROM person_photo WHERE person_id = ? ORDER BY id", arrayOf(personId.toString())).use {
+            while (it.moveToNext()) out += GalleryItem(it.getLong(0), it.getBlob(1))
+        }
+        out
+    }
+
+    /** One gallery photo at full (stored) size, or null if it is gone. */
+    suspend fun galleryPhoto(id: Long): ByteArray? = withContext(Dispatchers.IO) {
+        helper.readableDatabase.rawQuery("SELECT data FROM person_photo WHERE id = ?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getBlob(0) else null }
+    }
+
+    /** Adds a photo to a person's gallery. A person can have at most 12 extra photos. */
+    suspend fun addGalleryPhoto(personId: Int, photo: PreparedPhoto) = changing { db ->
+        val count = db.rawQuery("SELECT COUNT(*) FROM person_photo WHERE person_id = ?", arrayOf(personId.toString())).use { it.moveToFirst(); it.getInt(0) }
+        if (count >= GALLERY_LIMIT) throw IOException("A person can have at most $GALLERY_LIMIT extra photos.")
+        db.insertGallery(personId, photo)
+    }
+
+    suspend fun removeGalleryPhoto(id: Long) = changing { db -> db.delete("person_photo", "id = ?", arrayOf(id.toString())) }
+
     /** The small square picture of a person, or null if they have none. Safe to call from any thread. */
     suspend fun thumb(id: Int): ByteArray? = withContext(Dispatchers.IO) {
         helper.readableDatabase.rawQuery("SELECT thumb FROM photo WHERE person_id = ?", arrayOf(id.toString())).use {
@@ -168,6 +192,7 @@ class FamilyRepository(
             partnerIds = snapshot.spousesOf(id).map { it.id },
             photo = db.readPhoto(id),
             details = db.readDetails(id, snapshot.spousesOf(id).map { it.id }),
+            gallery = db.readGalleryOf(id),
         )
         db.delete("person", "id = ?", arrayOf(id.toString()))
         record
@@ -182,13 +207,14 @@ class FamilyRepository(
         for (partner in deleted.partnerIds) if (db.exists(partner)) db.insertPartnership(deleted.person.id, partner)
         // Couple events come back for partners who are still in the tree (putDetails skips the others).
         db.putDetails(deleted.person.id, deleted.details)
+        for (g in deleted.gallery) db.insertGallery(deleted.person.id, g)
     }
 
     /** The whole tree, photos included, as backup-file text. */
     suspend fun exportBackup(): String = lock.withLock {
         withContext(Dispatchers.IO) {
             val db = helper.readableDatabase
-            BackupCodec.encode(_family.value, Instant.now().toString(), db.readPhotos(), db.readTreeDetails())
+            BackupCodec.encode(_family.value, Instant.now().toString(), db.readPhotos(), db.readTreeDetails(), db.readGalleryAll())
         }
     }
 
@@ -204,6 +230,7 @@ class FamilyRepository(
         for ((a, b) in data.partnerships) db.insertPartnership(a, b)
         for ((id, jpeg) in data.photos) db.putPhoto(id, PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
         db.putTreeDetails(data.details) { it }
+        for ((id, list) in data.gallery) for (jpeg in list) db.insertGallery(id, PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
     }
 
     /** The whole tree as GEDCOM text, for other family tree programs. */
@@ -226,6 +253,7 @@ class FamilyRepository(
         for ((a, b) in data.partnerships) db.insertPartnership(newIds.getValue(a), newIds.getValue(b))
         for ((id, jpeg) in data.photos) db.putPhoto(newIds.getValue(id), PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
         db.putTreeDetails(data.details) { newIds.getValue(it) }
+        for ((id, list) in data.gallery) for (jpeg in list) db.insertGallery(newIds.getValue(id), PreparedPhoto(jpeg, PhotoCodec.thumbOf(jpeg)))
     }
 
     /**
@@ -240,6 +268,7 @@ class FamilyRepository(
             val photos = if (scope.withPhotos) db.readPhotos().filterKeys { it in ids } else emptyMap()
             val text = BackupCodec.encode(
                 Share.subFamily(family, ids, scope.withContact), Instant.now().toString(), photos, Share.subDetails(db.readTreeDetails(), ids, scope.withContact),
+                if (scope.withPhotos) db.readGalleryAll().filterKeys { it in ids } else emptyMap(),
             )
             text to ids.size
         }
@@ -273,6 +302,7 @@ class FamilyRepository(
             taken += db.rawQuery("SELECT uid FROM person WHERE id = ?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getString(0) else "" }
             newIds[incomingId] = id
             data.photos[incomingId]?.let { db.putPhoto(id, PreparedPhoto(it, PhotoCodec.thumbOf(it))) }
+            data.gallery[incomingId]?.forEach { db.insertGallery(id, PreparedPhoto(it, PhotoCodec.thumbOf(it))) }
         }
         fun resolve(ref: Int): Int = if (ref > 0) ref else newIds.getValue(-ref)
         for ((id, draft) in result.updates) db.update("person", draft.toValues(), "id = ?", arrayOf(id.toString()))
@@ -332,7 +362,7 @@ class FamilyRepository(
         db.update("person", merged.toValues(), "id = ?", arrayOf(keepId.toString()))
 
         if (!keep.hasPhoto && gone.hasPhoto) db.execSQL("UPDATE photo SET person_id = ? WHERE person_id = ?", arrayOf(keepId, removeId))
-        for (table in listOf("event", "source", "person_field")) db.execSQL("UPDATE $table SET person_id = ? WHERE person_id = ?", arrayOf(keepId, removeId))
+        for (table in listOf("event", "source", "person_field", "person_photo")) db.execSQL("UPDATE $table SET person_id = ? WHERE person_id = ?", arrayOf(keepId, removeId))
         if (gone.isMe) db.execSQL("UPDATE person SET is_me = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE is_me = 1 OR id = ?", arrayOf(keepId, keepId))
 
         // Links. The other person's marriage events are collected before their partnerships go.
@@ -365,7 +395,7 @@ class FamilyRepository(
     private fun writeSafetyCopy(db: SQLiteDatabase, family: Family) {
         if (family.size == 0) return
         val temp = File(safetyFile.parentFile, safetyFile.name + ".tmp")
-        temp.writeText(BackupCodec.encode(family, Instant.now().toString(), db.readPhotos(), db.readTreeDetails()))
+        temp.writeText(BackupCodec.encode(family, Instant.now().toString(), db.readPhotos(), db.readTreeDetails(), db.readGalleryAll()))
         if (!temp.renameTo(safetyFile)) {
             safetyFile.delete()
             if (!temp.renameTo(safetyFile)) throw IOException("Could not save a safety copy of the tree")
@@ -706,5 +736,26 @@ private fun SQLiteDatabase.readAllFields(): Map<Int, List<CustomField>> {
     rawQuery("SELECT person_id, label, value FROM person_field ORDER BY id", null).use {
         while (it.moveToNext()) out.getOrPut(it.getInt(0)) { mutableListOf() } += CustomField(it.getString(1), it.getString(2))
     }
+    return out
+}
+
+/** A gallery photo as listed: its id and the small picture for the grid. */
+class GalleryItem(val id: Long, val thumb: ByteArray)
+
+private const val GALLERY_LIMIT = 12
+
+private fun SQLiteDatabase.insertGallery(personId: Int, photo: PreparedPhoto) {
+    insertOrThrow("person_photo", null, ContentValues().apply { put("person_id", personId); put("data", photo.main); put("thumb", photo.thumb) })
+}
+
+private fun SQLiteDatabase.readGalleryAll(): Map<Int, List<ByteArray>> {
+    val out = LinkedHashMap<Int, MutableList<ByteArray>>()
+    rawQuery("SELECT person_id, data FROM person_photo ORDER BY id", null).use { while (it.moveToNext()) out.getOrPut(it.getInt(0)) { mutableListOf() } += it.getBlob(1) }
+    return out
+}
+
+private fun SQLiteDatabase.readGalleryOf(personId: Int): List<PreparedPhoto> {
+    val out = ArrayList<PreparedPhoto>()
+    rawQuery("SELECT data, thumb FROM person_photo WHERE person_id = ? ORDER BY id", arrayOf(personId.toString())).use { while (it.moveToNext()) out += PreparedPhoto(it.getBlob(0), it.getBlob(1)) }
     return out
 }

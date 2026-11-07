@@ -313,6 +313,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     loadDetails = vm::details,
                     onEdit = { screen = Screen.Form(shown, null, fromPerson = true) },
                     listState = scrolls.lazy("person"),
+                    vm = vm,
                     onShare = { screen = Screen.Share(shown) },
                     onBack = { screen = Screen.Tree },
                 )

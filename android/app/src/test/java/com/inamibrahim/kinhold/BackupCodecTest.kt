@@ -108,7 +108,7 @@ class BackupCodecTest {
 
     @Test
     fun aBackupFromANewerVersionIsRefusedWithAnUpdateHint() {
-        val e = rejects("""{"format":"kinhold-backup","version":7,"people":[]}""")
+        val e = rejects("""{"format":"kinhold-backup","version":8,"people":[]}""")
         assertTrue(e.message!!.contains("newer version"))
     }
 

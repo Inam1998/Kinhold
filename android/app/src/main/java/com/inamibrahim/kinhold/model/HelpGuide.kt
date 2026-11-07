@@ -144,11 +144,14 @@ object HelpGuide {
             sections = listOf(
                 HelpSection("Adding a photo", "Open Edit (or add a new person) and choose Add a photo. You pick a picture from your phone's photo picker; Kinhold does not need access to your whole gallery."),
                 HelpSection("Changing or removing", "In the same place choose Change photo or Remove photo. Nothing changes until you press Save."),
+                HelpSection("More photos", "On a person's Details page, More photos shows a grid of extra pictures. Choose Add a photo or Take a photo, tap a picture to see it larger, and Remove to delete it. These save at once, without pressing Save."),
                 HelpSection("People without a photo", "They show a default avatar, a head and shoulders in blue, rose or grey depending on the sex you recorded."),
                 HelpSection("What is stored", "Kinhold keeps its own smaller copy of the picture inside the app, with a square version for the tree. The original stays where it was."),
             ),
             limits = listOf(
-                "Photos can only be chosen from your phone, not taken with the camera from inside Kinhold yet.",
+                "Take a photo opens your phone's own camera app and Kinhold keeps a smaller copy. Kinhold itself asks for no camera permission.",
+                "A person can have at most 12 extra photos besides the main one. They are kept in backups and in share files when photos are included, but they are not part of GEDCOM files and are not merged into people who are already in your tree.",
+                "Every photo makes backups larger, and automatic backups repeat them each time, so a tree with hundreds of photos has large backups.",
                 "Pictures are shrunk to 720 pixels on the long side, so they are for faces and keepsakes, not printing.",
                 "Backups include photos and can get large with many of them. GEDCOM files do not include photos.",
                 "Deleting a person deletes their photo too. Undo brings it back, and so does a backup.",

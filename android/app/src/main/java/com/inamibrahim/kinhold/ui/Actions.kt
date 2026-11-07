@@ -55,3 +55,21 @@ object Actions {
         launch(context, Intent(Intent.ACTION_VIEW, uri), "No maps app found.")
     }
 }
+
+/** A place for the system camera app to save one picture, and a way to clean it up. The app asks for no camera permission: the camera app takes the picture. */
+object CameraShot {
+    private const val AUTHORITY = "com.inamibrahim.kinhold.files"
+
+    class Pending(val file: java.io.File, val uri: Uri)
+
+    fun prepare(context: Context): Pending {
+        val dir = java.io.File(context.cacheDir, "camera").also { it.mkdirs() }
+        val file = java.io.File(dir, "shot-${System.nanoTime()}.jpg")
+        return Pending(file, androidx.core.content.FileProvider.getUriForFile(context, AUTHORITY, file))
+    }
+
+    /** Removes every leftover camera file, once a picture has been read or the camera was cancelled. */
+    fun clean(context: Context) {
+        java.io.File(context.cacheDir, "camera").listFiles()?.forEach { it.delete() }
+    }
+}

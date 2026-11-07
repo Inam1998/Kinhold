@@ -104,6 +104,31 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun marriageDates(withDayAndMonth: Boolean = true) = repo.marriageDates(withDayAndMonth)
 
+    // ---------------------------------------------------------------- extra photos
+
+    suspend fun gallery(personId: Int) = repo.gallery(personId)
+
+    suspend fun galleryPhoto(id: Long) = repo.galleryPhoto(id)
+
+    /** Shrinks the picture at [uri] and adds it to the person's extra photos. */
+    fun addGalleryPhoto(personId: Int, uri: Uri, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val photo = withContext(Dispatchers.IO) { PhotoCodec.prepare(getApplication<Application>().contentResolver, uri) }
+                repo.addGalleryPhoto(personId, photo)
+                Unit
+            }
+            onDone(result)
+        }
+    }
+
+    fun removeGalleryPhoto(id: Long, onDone: () -> Unit) {
+        viewModelScope.launch {
+            repo.removeGalleryPhoto(id)
+            onDone()
+        }
+    }
+
     /** A person's events, sources and couple events, read when a screen needs them (never all at once). */
     suspend fun details(id: Int): PersonDetails = repo.details(id)
 

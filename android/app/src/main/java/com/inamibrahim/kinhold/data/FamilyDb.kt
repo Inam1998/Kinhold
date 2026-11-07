@@ -74,6 +74,7 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
         createPhotoTable(db)
         createEventTables(db)
         createFieldTable(db)
+        createGalleryTable(db)
     }
 
     /** Photos live in their own table so the main query never reads their bytes; deleting a person deletes theirs. */
@@ -89,6 +90,13 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             """.trimIndent(),
         )
     }
+
+    /** Extra photos of a person beyond the main one, each with a small copy for the grid. Deleting the person deletes them. */
+    private fun createGalleryTable(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE person_photo (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE, data BLOB NOT NULL, thumb BLOB NOT NULL)")
+        db.execSQL("CREATE INDEX person_photo_person ON person_photo(person_id)")
+    }
+
     /** Facts the owner defines for a person (a label and a value each), kept in the order they were entered. */
     private fun createFieldTable(db: SQLiteDatabase) {
         db.execSQL(
@@ -174,10 +182,11 @@ class FamilyDb(context: Context, name: String?) : SQLiteOpenHelper(context, name
             db.execSQL("ALTER TABLE person ADD COLUMN email TEXT NOT NULL DEFAULT ''")
             createFieldTable(db)
         }
+        if (oldVersion < 7) createGalleryTable(db)
     }
 
     companion object {
-        const val VERSION = 6
+        const val VERSION = 7
         const val FILE_NAME = "kinhold.db"
     }
 }

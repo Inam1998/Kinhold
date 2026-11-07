@@ -93,6 +93,7 @@ fun PersonFormScreen(
     var photo by remember { mutableStateOf<PhotoChange>(PhotoChange.Keep) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var preparing by remember { mutableStateOf(false) }
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             preparing = true
@@ -101,6 +102,21 @@ fun PersonFormScreen(
                 preparing = false
                 result.fold({ photo = PhotoChange.Set(it) }, { photoError = it.message ?: "That picture could not be used." })
             }
+        }
+    }
+    var shot by remember { mutableStateOf<CameraShot.Pending?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val pending = shot
+        if (ok && pending != null) {
+            preparing = true
+            photoError = null
+            onPreparePhoto(pending.uri) { result ->
+                preparing = false
+                result.fold({ photo = PhotoChange.Set(it) }, { photoError = it.message ?: "That picture could not be used." })
+                CameraShot.clean(appContext)
+            }
+        } else {
+            CameraShot.clean(appContext)
         }
     }
     val hasPhoto = when (photo) {
@@ -229,6 +245,7 @@ fun PersonFormScreen(
                                     selected = false,
                                     onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                                 )
+                                Pill("Take a photo", selected = false, onClick = { val p = CameraShot.prepare(appContext); shot = p; camera.launch(p.uri) })
                                 if (hasPhoto) Pill("Remove photo", selected = false, onClick = { photo = PhotoChange.Remove })
                             }
                         }

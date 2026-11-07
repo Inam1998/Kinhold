@@ -70,6 +70,7 @@ fun PersonPageScreen(
     loadDetails: suspend (Int) -> PersonDetails,
     onShare: () -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    vm: com.inamibrahim.kinhold.data.KinholdViewModel,
     onEdit: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -130,6 +131,7 @@ fun PersonPageScreen(
                         }
                     }
                 }
+                item { Column(Modifier.padding(top = 12.dp)) { Text("More photos", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)); GallerySection(vm, person.id) } }
                 items(items) { item ->
                     when (item) {
                         is PageItem.Heading -> Text(

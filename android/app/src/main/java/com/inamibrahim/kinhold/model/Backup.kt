@@ -15,6 +15,8 @@ class BackupData(
     val created: String = "",
     val photos: Map<Int, ByteArray> = emptyMap(),
     val details: TreeDetails = TreeDetails.Empty,
+    /** Extra photos by person id, each a JPEG. */
+    val gallery: Map<Int, List<ByteArray>> = emptyMap(),
 )
 
 /** A backup file that cannot be used. [message] is written for the person, not for a programmer. */
@@ -28,7 +30,7 @@ class BackupException(message: String) : Exception(message)
  */
 object BackupCodec {
     const val FORMAT = "kinhold-backup"
-    const val VERSION = 6
+    const val VERSION = 7
     private const val MAX_PEOPLE = 200_000
     private const val MAX_PHOTO_BYTES = 3_000_000
     private const val NOT_A_BACKUP = "This file is not a Kinhold backup."
@@ -39,6 +41,7 @@ object BackupCodec {
         created: String,
         photos: Map<Int, ByteArray> = emptyMap(),
         details: TreeDetails = TreeDetails.Empty,
+        gallery: Map<Int, List<ByteArray>> = emptyMap(),
     ): String {
         val people = JSONArray()
         val base64 = java.util.Base64.getEncoder()
@@ -67,6 +70,7 @@ object BackupCodec {
             details.events[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("events", EventJson.events(it)) }
             details.sources[p.id]?.takeIf { it.isNotEmpty() }?.let { o.put("sources", EventJson.sources(it)) }
             photos[p.id]?.let { o.put("photo", base64.encodeToString(it)) }
+            gallery[p.id]?.takeIf { it.isNotEmpty() }?.let { list -> o.put("gallery", JSONArray().apply { list.forEach { put(base64.encodeToString(it)) } }) }
             people.put(o)
         }
         return JSONObject()
@@ -108,6 +112,7 @@ object BackupCodec {
             val uids = HashSet<String>()
             var meCount = 0
             val photos = HashMap<Int, ByteArray>()
+            val gallery = HashMap<Int, List<ByteArray>>()
             val personEvents = LinkedHashMap<Int, List<Event>>()
             val personSources = LinkedHashMap<Int, List<Source>>()
             val personFields = LinkedHashMap<Int, List<CustomField>>()
@@ -136,6 +141,10 @@ object BackupCodec {
                 if (o.has("sources") && !o.isNull("sources")) personSources[id] = EventJson.readSources(o.getJSONArray("sources"))
                 if (o.has("fields") && !o.isNull("fields")) personFields[id] = EventJson.readFields(o.getJSONArray("fields"))
                 if (!o.isNull("photo")) photos[id] = photo(o.getString("photo"))
+                o.optJSONArray("gallery")?.let { g ->
+                    if (g.length() > 12) throw BackupException(DAMAGED)
+                    gallery[id] = (0 until g.length()).map { photo(g.getString(it)) }
+                }
                 people += Person(
                     id = id,
                     given = o.optString("given", ""),
@@ -177,7 +186,7 @@ object BackupCodec {
             }
             return BackupData(
                 people, links, partnerships, root.optString("created", ""), photos,
-                TreeDetails(personEvents, personSources, coupleEvents, personFields),
+                TreeDetails(personEvents, personSources, coupleEvents, personFields), gallery,
             )
         } catch (e: JSONException) {
             throw BackupException(DAMAGED)
