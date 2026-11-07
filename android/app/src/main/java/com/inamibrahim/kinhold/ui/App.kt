@@ -186,7 +186,8 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
     // One cache of people's pictures for every screen, so a photo is decoded once however many places show it.
     val scope = rememberCoroutineScope()
     val avatars = remember { AvatarCache(scope) { id -> vm.thumb(id) } }
-    CompositionLocalProvider(LocalAvatars provides avatars) { KinholdContent(vm) }
+    val family by vm.family.collectAsState()
+    CompositionLocalProvider(LocalAvatars provides avatars) { ProvidePlaces(family) { KinholdContent(vm) } }
 }
 
 @Composable

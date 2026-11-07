@@ -259,8 +259,8 @@ fun BackupScreen(vm: KinholdViewModel, peopleCount: Int, scroll: androidx.compos
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     Text(
-                        "GEDCOM keeps names, sex, birth and death years, places, notes and family links. Photos and other " +
-                            "details are not part of Kinhold yet.",
+                        "GEDCOM keeps names, sex, birth and death dates, places, notes, family links, events, marriages and " +
+                            "source citations. Photos are not part of a GEDCOM file; a Kinhold backup keeps them.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Palette.TextMuted,
                         modifier = Modifier.padding(top = 12.dp),

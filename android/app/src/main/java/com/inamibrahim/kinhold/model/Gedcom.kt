@@ -27,7 +27,7 @@ class GedcomReport(
 ) {
     /** Plain sentences for the confirmation, given how many people the tree on this phone already has. */
     fun summary(currentPeople: Int): List<String> {
-        fun people(n: Int) = "$n ${if (n == 1) "person" else "people"}"
+        fun people(n: Int) = "${"%,d".format(java.util.Locale.ROOT, n)} ${if (n == 1) "person" else "people"}"
         val lines = ArrayList<String>()
         lines += "This file has ${people(individuals)} in $families ${if (families == 1) "family" else "families"}."
         if (currentPeople > 0) {
@@ -220,7 +220,16 @@ object Gedcom {
                 }
             }
             if (events.isNotEmpty()) personEvents[id] = events
-            val customFields = node.all("_FIELD").map { CustomField(it.child("TYPE")?.value.orEmpty(), it.value).clamped() }.filter { !it.isBlank }.take(Limits.FIELDS)
+            // Other names (a married name, "also known as") are kept as own facts, so a second NAME line is not lost.
+            val otherNames = node.all("NAME").drop(1).mapNotNull { n ->
+                val (g, s) = nameOf(n)
+                val text = listOf(g, s).filter { it.isNotEmpty() }.joinToString(" ")
+                if (text.isEmpty()) null else CustomField(otherNameLabel(n.child("TYPE")?.value), text)
+            }
+            // "DEAT Y": the person is dead but no date or place is given. Kept as a fact, so they are not taken for living.
+            val deadUnknown = if (death != null && deathDate.year == null && death.child("PLAC") == null) listOf(CustomField("Deceased", "Yes, no date recorded")) else emptyList()
+            val customFields = (node.all("_FIELD").map { CustomField(it.child("TYPE")?.value.orEmpty(), it.value).clamped() } + otherNames + deadUnknown)
+                .map { it.clamped() }.filter { !it.isBlank }.take(Limits.FIELDS)
             if (customFields.isNotEmpty()) personFields[id] = customFields
             eventsKept += events.size
             // Citations for the person in general, and for the birth and the death (which are fields, not events).
@@ -391,15 +400,32 @@ object Gedcom {
         val close = if (open >= 0) v.indexOf('/', open + 1) else -1
         var given: String
         var surname = ""
+        // A suffix such as "Jr." comes after the closing slash, or on an NSFX line; it is kept at the end of the surname.
+        var suffix = ""
         if (open >= 0 && close > open) {
             given = v.substring(0, open)
             surname = v.substring(open + 1, close) + " " + v.substring(close + 1)
+            suffix = v.substring(close + 1).trim()
         } else {
             given = v
         }
         name.child("GIVN")?.value?.takeIf { it.isNotBlank() }?.let { given = it }
         name.child("SURN")?.value?.takeIf { it.isNotBlank() }?.let { surname = it }
-        return tidy(given) to tidy(surname)
+        name.child("NSFX")?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { suffix = it }
+        var last = tidy(surname)
+        // GIVN and SURN win over the NAME line, which would lose the suffix; put it back unless it is already there.
+        if (suffix.isNotEmpty() && !last.endsWith(suffix)) last = tidy("$last $suffix")
+        return tidy(given) to last
+    }
+
+    /** The label for a second NAME line, from its TYPE: "married" becomes "Married name", "aka" "Also known as". */
+    private fun otherNameLabel(type: String?): String = when (type?.trim()?.lowercase()) {
+        "married" -> "Married name"
+        "aka", "also known as" -> "Also known as"
+        "birth" -> "Birth name"
+        "religious" -> "Religious name"
+        "immigrant" -> "Immigrant name"
+        else -> "Other name"
     }
 
     /** An ADDR line: its own text, or if it has none the structured parts (ADR1, CITY, STAE, POST, CTRY) joined. */

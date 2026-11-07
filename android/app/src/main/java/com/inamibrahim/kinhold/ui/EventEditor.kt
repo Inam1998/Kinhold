@@ -321,7 +321,7 @@ fun EventEditorScreen(
             }
             Field(detailLabel(kind), detail, { detail = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
             DateFields("Date (any part can be left empty)", day, month, year, { d, m, y -> day = d; month = m; year = y }, Modifier.padding(top = 14.dp))
-            Field("Place", place, { place = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
+            PlaceField("Place", place, { place = it }, Modifier.fillMaxWidth().padding(top = 14.dp))
             Field("Notes", note, { note = it }, Modifier.fillMaxWidth().padding(top = 14.dp), singleLine = false)
 
             Label("Sources for this event", Modifier.padding(top = 20.dp, bottom = 8.dp))

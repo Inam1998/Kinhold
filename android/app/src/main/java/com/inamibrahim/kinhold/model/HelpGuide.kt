@@ -58,6 +58,7 @@ object HelpGuide {
             summary = "What you can record about someone.",
             sections = listOf(
                 HelpSection("What you can fill in", "First names, surname, sex, the date of birth and of death (a year is enough, the day and month are optional), the place of each, and notes. Only a name is required. Baptisms, jobs, moves, marriages and the like go in events, see \"Events, marriages and sources\"."),
+                HelpSection("Places", "While you type a place of birth, a place of death or the place of an event, places already used in your tree that match are offered under the box. Tap one to fill it in, so the same place is spelled the same way every time. \"Lahore\" and \"lahore\" count as one place, and the spelling used most often is the one offered."),
                 HelpSection("Dates", "Leave any part empty if you do not know it. A month needs a year and a day needs a month, and 30 February is refused. The death date cannot be before the birth date."),
                 HelpSection("Changing someone", "Choose Edit on the card at the bottom of the tree."),
                 HelpSection("Phone, email, address and map pin", "In Edit you can add a phone number, an email address, an address and a map pin. On the Details page, Call, Text, WhatsApp, Email and Map open your phone's own apps, and Map shows the pin (or searches the address) in your maps app. To save a pin, tap Choose on map in Edit, press and hold the place in your maps app, tap the numbers that appear (this copies them), then come back and tap Use it. Paste does the same from the clipboard. A short Google Maps link (maps.app.goo.gl) holds no numbers and is not accepted."),
@@ -74,6 +75,7 @@ object HelpGuide {
             ),
             limits = listOf(
                 "Different people can share a name. Find shows whose child each one is.",
+                "Place suggestions come from the birth and death places of the people in your tree (not from event places or addresses), at most the 2,000 most used, and only places you have typed before are offered: Kinhold has no list of the world's places and looks nothing up.",
                 "Linking works one link at a time: linking a child to one parent does not also link their other parent, and a sibling is made by linking the same parents. There is no undo button for a link, but Unlink removes it again (a copy of the tree is only kept for restores, imports and merges).",
                 "Spouses are placed by marriage date where you have recorded one, then by birth year, then by the order they were added.",
                 "Kinhold asks for no permission to call or message: it only hands the number to your phone's apps. WhatsApp needs the number with its country code, such as +92, and only works if WhatsApp is installed.",
@@ -228,7 +230,8 @@ object HelpGuide {
             ),
             limits = listOf(
                 "Adoptive and foster links are read from and written to GEDCOM (the pedigree type); a step link is written with a type other programs may ignore. Events (marriage, divorce, baptism, burial, jobs, residences and more), full dates and source citations are kept. Dates such as \"about 1850\" or \"between 1800 and 1810\" keep only their first date.",
-                "Not kept: photos and other files, identity numbers, church ordinances, email and web addresses, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
+                "Not kept: photos and other files, identity numbers, church ordinances, web addresses, source records beyond title, author and text, and events with no place here. Photos are not written to GEDCOM files either. The import tells you how many it skipped.",
+                "Names: a suffix such as Jr. is kept at the end of the surname. A second name in the file (a married name, an alias) is kept as an own fact on the Details page, such as Married name. A person marked as dead with no date and no place gets the own fact Deceased, so they are not taken for living; their dates stay empty.",
                 "Citations for a birth or a death become sources of the person, with a note saying which.",
                 "Add does not match people who are already in your tree, so adding the same file twice makes duplicates.",
                 "Very old files that use the ANSEL character set can show wrong accents.",

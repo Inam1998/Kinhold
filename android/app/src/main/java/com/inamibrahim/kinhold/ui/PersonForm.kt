@@ -285,9 +285,9 @@ fun PersonFormScreen(
                     }
                     FormCard("Life", Icons.Filled.DateRange, Tones.Amber) {
                         DateFields("Born", bornDay, bornMonth, born, { d, m, y -> bornDay = d; bornMonth = m; born = y })
-                        Field("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth())
+                        PlaceField("Place of birth", birthPlace, { birthPlace = it }, Modifier.fillMaxWidth())
                         DateFields("Died", diedDay, diedMonth, died, { d, m, y -> diedDay = d; diedMonth = m; died = y })
-                        Field("Place of death", deathPlace, { deathPlace = it }, Modifier.fillMaxWidth())
+                        PlaceField("Place of death", deathPlace, { deathPlace = it }, Modifier.fillMaxWidth())
                     }
 
                     FormCard("Contact", Icons.Filled.Call, Tones.Mint) {
