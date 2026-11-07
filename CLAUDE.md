@@ -55,3 +55,6 @@ Known gaps: step and half relations are not modelled (a child has at most two pa
 3. Recorded link types (adopted, foster, step) and more than two parents, if wanted.
 4. Ads and Pro, then scan-to-person, voice stories, contact import.
 Open performance question: about 11 to 12 ms per frame while panning, regardless of tree size (see above); profile on a slower phone.
+
+## Next feature (decided with the owner 2026-11-07): sharing trees between people
+Each person builds their own tree and can send part of it to a relative. Design: a permanent random ID per person (migration, backup format change, tests); a Kinhold share file (not GEDCOM) exported from one person with a scope (ancestors, descendants or both, number of generations, spouses, photos, optional "exclude living people"); an import review screen with three groups (same person by ID = merged, possible match by name, birth date and relatives = the owner decides, new = added); conflicts are asked per person and per field, never silently overwritten; the existing safety copy gives Undo. No internet permission. Stages: IDs and migration, export from a person, match and review import, Help page and tests. Test file with events: `docs/test-family-events.ged` (invented family: a divorce and a second marriage).
