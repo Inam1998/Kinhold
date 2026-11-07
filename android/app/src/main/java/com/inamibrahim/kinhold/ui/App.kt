@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -69,6 +70,9 @@ sealed interface Screen {
 
     data object More : Screen
 
+    /** Checks for impossible data and for people entered twice. */
+    data object Checks : Screen
+
     /** Birthdays, remembrance days and anniversaries coming up. */
     data object Upcoming : Screen
 
@@ -99,6 +103,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help -> "help"
             Screen.Settings -> "settings"
             Screen.More -> "more"
+            Screen.Checks -> "checks"
             Screen.Upcoming -> "upcoming"
             is Screen.Related -> "relation|${s.first}|${s.second}"
             is Screen.LockSetup -> "lock|${s.mode.name}"
@@ -127,6 +132,8 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Related(p.getOrNull(1)?.toIntOrNull() ?: -1, p.getOrNull(2)?.toIntOrNull() ?: -1)
         } else if (text == "upcoming") {
             Screen.Upcoming
+        } else if (text == "checks") {
+            Screen.Checks
         } else if (text == "more") {
             Screen.More
         } else if (text == "merge") {
@@ -238,6 +245,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Save, restore, merge and import") { screen = Screen.Backup },
                     MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = Screen.Related(firstFocus, focusId) },
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
+                    MoreItem(Icons.Filled.Check, Tones.Teal, "Checks and duplicates", "Impossible dates, and people entered twice") { screen = Screen.Checks },
                     MoreItem(Icons.Filled.Settings, Tones.Sky, "Settings", "Who you are, app lock, theme and accent colour") { screen = Screen.Settings },
                     MoreItem(Icons.Filled.Info, Tones.Amber, "How Kinhold works", "A page for every feature, with its limits") { screen = Screen.Help },
                 ),
@@ -266,6 +274,12 @@ private fun KinholdContent(vm: KinholdViewModel) {
             BackHandler { screen = Screen.More }
             val marriages by produceState<List<com.inamibrahim.kinhold.model.MarriageDate>?>(null, family) { value = vm.marriageDates() }
             UpcomingScreen(family, marriages, onOpen = { id -> focusId = id; screen = Screen.Tree }, onBack = { screen = Screen.More })
+        }
+
+        target is Screen.Checks -> {
+            BackHandler { screen = Screen.More }
+            val marriages by produceState<List<com.inamibrahim.kinhold.model.MarriageDate>?>(null, family) { value = vm.marriageDates(false) }
+            ChecksScreen(vm, family, marriages, onOpen = { id -> focusId = id; screen = Screen.Tree }, onBack = { screen = Screen.More })
         }
 
         target is Screen.LockSetup -> {
@@ -515,7 +529,7 @@ private fun formSpouses(family: Family, editingId: Int?, relation: Relation?): L
 private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming -> 2
+    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -549,6 +563,7 @@ private fun Screen.key(): String = when (this) {
     is Screen.LockSetup -> "locksetup"
     is Screen.Related -> "relation"
     Screen.Upcoming -> "upcoming"
+    Screen.Checks -> "checks"
     is Screen.Person -> "person"
     is Screen.Share -> "share"
     is Screen.Form -> "form"

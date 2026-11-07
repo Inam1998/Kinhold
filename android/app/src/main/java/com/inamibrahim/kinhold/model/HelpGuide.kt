@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { Lock, Relationship, Upcoming, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { Lock, Relationship, Upcoming, Checks, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -275,6 +275,23 @@ object HelpGuide {
                 "Birthdays are shown only for people with no death date who were born in the last 110 years. Anniversaries are not shown for a couple with a divorce or a death recorded.",
                 "A birthday on 29 February is shown on 28 February in years that have no 29 February.",
                 "Dates use the Gregorian calendar only. Hijri dates are not supported yet.",
+            ),
+        ),
+        HelpPage(
+            topic = HelpTopic.Checks,
+            title = "Checks and duplicates",
+            summary = "Find data that cannot be right, and people entered twice.",
+            sections = listOf(
+                HelpSection("Things to look at", "Open More, then Checks and duplicates. Kinhold lists data that looks impossible or unlikely: a child born before a parent, a parent who died before the child was born, a marriage before someone was born, someone who would be over 110 with no death date. Tap one to go to that person and fix it."),
+                HelpSection("Possible duplicates", "People with the same name, a birth year within one year of each other and the same sex are listed as possible duplicates, with the reason. Choose Join, keep first or Join, keep second to fold one entry into the other, or Not the same to stop asking."),
+                HelpSection("What joining does", "The entry you keep gets anything it lacks from the other: dates, places, notes, contact details, photo, events, sources, own facts, and every parent, child and partner link. The other entry is then removed. A copy of your tree is kept first, so you can use Undo in Backup and sharing."),
+            ),
+            limits = listOf(
+                "The checks only read your tree. Nothing is fixed for you, and a warning can be wrong: a parent who really was young, or a person who really lived past 110.",
+                "Only people with the same surname are compared for duplicates, so someone entered under two different surnames will not be found.",
+                "Parents and children, spouses, and people of different sex are never offered as duplicates.",
+                "A person keeps at most two parents when joined, so an extra parent link from the removed entry is dropped.",
+                "Dates with only a year are compared by year, so a marriage and a birth in the same year are not flagged.",
             ),
         ),
         HelpPage(

@@ -141,12 +141,12 @@ class FamilyRepository(
     }
 
     /** Marriage dates that have a month and a day, for anniversaries. Safe to call from any thread. */
-    suspend fun marriageDates(): List<MarriageDate> = withContext(Dispatchers.IO) {
+    suspend fun marriageDates(withDayAndMonth: Boolean = true): List<MarriageDate> = withContext(Dispatchers.IO) {
         val out = ArrayList<MarriageDate>()
         helper.readableDatabase.rawQuery(
-            "SELECT a_id, b_id, year, month, day FROM event WHERE a_id IS NOT NULL AND kind = 'marriage' AND month IS NOT NULL AND day IS NOT NULL",
+            "SELECT a_id, b_id, year, month, day FROM event WHERE a_id IS NOT NULL AND kind = 'marriage' AND year IS NOT NULL" + (if (withDayAndMonth) " AND month IS NOT NULL AND day IS NOT NULL" else ""),
             null,
-        ).use { c -> while (c.moveToNext()) out += MarriageDate(c.getInt(0), c.getInt(1), PartialDate(c.intOrNull(2), c.getInt(3), c.getInt(4))) }
+        ).use { c -> while (c.moveToNext()) out += MarriageDate(c.getInt(0), c.getInt(1), PartialDate(c.intOrNull(2), c.intOrNull(3), c.intOrNull(4))) }
         out
     }
 
@@ -298,6 +298,58 @@ class FamilyRepository(
             db.putCoupleEvents(a, b, existing + events)
         }
         result
+    }
+
+    /**
+     * Joins two entries of the same person: [removeId] is folded into [keepId] and then deleted. The kept person gets any
+     * detail they lack (names, dates, places, notes, contact details, photo), all events, sources and own facts, the
+     * marriage events of each couple, and every parent, child and partner link of the other (a person keeps at most two
+     * parents). The safety copy is written first, so [undoRestore] takes it back.
+     */
+    suspend fun mergePeople(keepId: Int, removeId: Int) = changing { db ->
+        val snapshot = _family.value
+        require(keepId != removeId && keepId in snapshot && removeId in snapshot) { "Choose two different people in the tree" }
+        writeSafetyCopy(db, snapshot)
+        val keep = snapshot.person(keepId)
+        val gone = snapshot.person(removeId)
+
+        fun pick(mine: String, theirs: String) = mine.ifBlank { theirs }
+        val d = keep.toDraft()
+        val notes = if (gone.notes.isNotBlank() && !keep.notes.contains(gone.notes)) listOf(keep.notes, gone.notes).filter { it.isNotBlank() }.joinToString("\n\n") else keep.notes
+        val takeBirth = keep.birthDate.isEmpty && !gone.birthDate.isEmpty
+        val takeDeath = keep.deathDate.isEmpty && !gone.deathDate.isEmpty
+        val merged = PersonDraft(
+            given = pick(d.given, gone.given), surname = pick(d.surname, gone.surname),
+            sex = if (d.sex == Sex.Unknown) gone.sex else d.sex,
+            born = if (takeBirth) gone.born else d.born, died = if (takeDeath) gone.died else d.died,
+            birthPlace = pick(d.birthPlace, gone.birthPlace), deathPlace = pick(d.deathPlace, gone.deathPlace), notes = notes,
+            birthMonth = if (takeBirth) gone.birthMonth else d.birthMonth, birthDay = if (takeBirth) gone.birthDay else d.birthDay,
+            deathMonth = if (takeDeath) gone.deathMonth else d.deathMonth, deathDay = if (takeDeath) gone.deathDay else d.deathDay,
+            uid = d.uid, address = pick(d.address, gone.address), phone = pick(d.phone, gone.phone),
+            lat = d.lat ?: gone.lat.takeIf { d.lat == null }, lng = d.lng ?: gone.lng.takeIf { d.lng == null },
+            email = pick(d.email, gone.email),
+        )
+        db.update("person", merged.toValues(), "id = ?", arrayOf(keepId.toString()))
+
+        if (!keep.hasPhoto && gone.hasPhoto) db.execSQL("UPDATE photo SET person_id = ? WHERE person_id = ?", arrayOf(keepId, removeId))
+        for (table in listOf("event", "source", "person_field")) db.execSQL("UPDATE $table SET person_id = ? WHERE person_id = ?", arrayOf(keepId, removeId))
+        if (gone.isMe) db.execSQL("UPDATE person SET is_me = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE is_me = 1 OR id = ?", arrayOf(keepId, keepId))
+
+        // Links. The other person's marriage events are collected before their partnerships go.
+        val partners = snapshot.spousesOf(removeId).map { it.id }.filter { it != keepId }
+        val coupleEvents = partners.associateWith { db.readDetails(removeId, listOf(it)).coupleEvents[it].orEmpty() }
+        val keepParents = db.parentsOf(keepId).toMutableList()
+        for (p in db.parentsOf(removeId)) {
+            if (keepParents.size >= 2) break
+            if (p != keepId && p !in keepParents) { db.insertLink(keepId, p); keepParents += p }
+        }
+        for (child in snapshot.childrenOf(removeId)) {
+            db.delete("parent_link", "child_id = ? AND parent_id = ?", arrayOf(child.id.toString(), removeId.toString()))
+            if (child.id != keepId) db.insertLink(child.id, keepId)
+        }
+        for (x in partners) db.insertPartnership(keepId, x)
+        for ((x, events) in coupleEvents) if (events.isNotEmpty()) db.putCoupleEvents(keepId, x, db.readDetails(keepId, listOf(x)).coupleEvents[x].orEmpty() + events)
+        db.delete("person", "id = ?", arrayOf(removeId.toString()))
     }
 
     /** Whether a tree from before the last restore is kept. */

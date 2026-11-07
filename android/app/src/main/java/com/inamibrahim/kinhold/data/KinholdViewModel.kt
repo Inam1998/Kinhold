@@ -102,7 +102,7 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.setMe(id) }
     }
 
-    suspend fun marriageDates() = repo.marriageDates()
+    suspend fun marriageDates(withDayAndMonth: Boolean = true) = repo.marriageDates(withDayAndMonth)
 
     /** A person's events, sources and couple events, read when a screen needs them (never all at once). */
     suspend fun details(id: Int): PersonDetails = repo.details(id)
@@ -354,6 +354,23 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Folds one entry of a person into the other and removes it. The earlier tree is kept so it can be undone from the Backup screen. */
+    fun mergePeople(keepId: Int, removeId: Int, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { repo.mergePeople(keepId, removeId); Unit }
+            hasSafetyCopy = repo.hasSafetyCopy()
+            onResult(result)
+        }
+    }
+
+    /** Pairs of people the owner said are not the same, as sorted pairs of permanent ids joined by a bar. */
+    fun dismissedDuplicates(): Set<String> = prefs.getStringSet(DISMISSED, emptySet()).orEmpty()
+
+    fun dismissDuplicate(a: String, b: String) {
+        val key = listOf(a, b).sorted().joinToString("|")
+        prefs.edit { putStringSet(DISMISSED, dismissedDuplicates() + key) }
+    }
+
     /** Replaces the tree with a backup that [readBackup] already checked. */
     fun restore(data: BackupData, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
@@ -374,6 +391,7 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val LAST_BACKUP = "last_backup"
         const val LAST_AUTO = "last_auto"
+        const val DISMISSED = "dismissed_duplicates"
         const val AUTO_FOLDER = "auto_folder"
         const val MAX_BACKUP_BYTES = 100 * 1024 * 1024
     }
