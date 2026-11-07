@@ -102,6 +102,8 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.setMe(id) }
     }
 
+    suspend fun marriageDates() = repo.marriageDates()
+
     /** A person's events, sources and couple events, read when a screen needs them (never all at once). */
     suspend fun details(id: Int): PersonDetails = repo.details(id)
 

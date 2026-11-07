@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { Lock, Relationship, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { Lock, Relationship, Upcoming, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -262,12 +262,29 @@ object HelpGuide {
             ),
         ),
         HelpPage(
+            topic = HelpTopic.Upcoming,
+            title = "Upcoming dates and reminders",
+            summary = "Birthdays, anniversaries and remembrance days.",
+            sections = listOf(
+                HelpSection("The list", "Open More, then Upcoming dates. It lists the next year of birthdays (for people who may be alive), the days people died (remembered each year) and marriage anniversaries, soonest first. Tap one to see that person in the tree."),
+                HelpSection("What it needs", "A date only appears if it has a day and a month. Add them in Edit with the date picker: the birth date for a birthday, the death date for a remembrance day, and a marriage event for an anniversary."),
+                HelpSection("Morning reminder", "Turn the reminder on in the same screen. At about 9 in the morning Kinhold posts a notification if today or tomorrow has a date. Android asks your permission to show notifications the first time. On the lock screen it shows only a general line, not names."),
+            ),
+            limits = listOf(
+                "The reminder is a little late at times, because Android may delay an alarm that does not need to be exact, and it works only while notifications are allowed for Kinhold.",
+                "Birthdays are shown only for people with no death date who were born in the last 110 years. Anniversaries are not shown for a couple with a divorce or a death recorded.",
+                "A birthday on 29 February is shown on 28 February in years that have no 29 February.",
+                "Dates use the Gregorian calendar only. Hijri dates are not supported yet.",
+            ),
+        ),
+        HelpPage(
             topic = HelpTopic.Privacy,
             title = "Privacy",
             summary = "Where your tree is kept.",
             sections = listOf(
                 HelpSection("On this phone", "Your tree and its photos are stored on this phone only. Kinhold has no internet permission, so it cannot send them anywhere."),
                 HelpSection("When it leaves the phone", "Only when you save a backup or GEDCOM file, or share one yourself."),
+                HelpSection("Permissions", "Kinhold asks for no permission to use the internet. Only the optional morning reminder asks to show notifications and to set its daily alarm again after the phone restarts."),
             ),
             limits = listOf(
                 "Unless you turn on the optional app lock, anyone who can open your phone and this app can see your tree.",

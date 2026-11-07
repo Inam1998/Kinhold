@@ -13,6 +13,7 @@ import com.inamibrahim.kinhold.model.EventKind
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.GeoPin
 import com.inamibrahim.kinhold.model.Limits
+import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Merge
 import com.inamibrahim.kinhold.model.MergeField
 import com.inamibrahim.kinhold.model.MergeResult
@@ -137,6 +138,16 @@ class FamilyRepository(
     /** A person's events and sources and the events of each of their couples. Safe to call from any thread. */
     suspend fun details(id: Int): PersonDetails = withContext(Dispatchers.IO) {
         helper.readableDatabase.readDetails(id, _family.value.spousesOf(id).map { it.id })
+    }
+
+    /** Marriage dates that have a month and a day, for anniversaries. Safe to call from any thread. */
+    suspend fun marriageDates(): List<MarriageDate> = withContext(Dispatchers.IO) {
+        val out = ArrayList<MarriageDate>()
+        helper.readableDatabase.rawQuery(
+            "SELECT a_id, b_id, year, month, day FROM event WHERE a_id IS NOT NULL AND kind = 'marriage' AND month IS NOT NULL AND day IS NOT NULL",
+            null,
+        ).use { c -> while (c.moveToNext()) out += MarriageDate(c.getInt(0), c.getInt(1), PartialDate(c.intOrNull(2), c.getInt(3), c.getInt(4))) }
+        out
     }
 
     /** The small square picture of a person, or null if they have none. Safe to call from any thread. */
