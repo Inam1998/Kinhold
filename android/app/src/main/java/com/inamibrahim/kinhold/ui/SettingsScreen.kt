@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -46,7 +47,7 @@ import androidx.compose.ui.unit.dp
 
 /** Theme and accent colour. Changes apply at once and are remembered. */
 @Composable
-fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollState, onChooseMe: (Int?) -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollState, onChooseMe: (Int?) -> Unit, onLock: (LockSetupMode) -> Unit, onBack: () -> Unit) {
     var picking by rememberSaveable { mutableStateOf(false) }
     ScreenBackground {
         Column(
@@ -71,6 +72,31 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Pill(if (me != null) "Change" else "Choose yourself", false, { picking = true }, icon = Icons.Filled.Person)
                         if (me != null) Pill("Clear", false, { onChooseMe(null) })
+                    }
+                }
+            }
+            AppCard(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Lock, Tones.Teal, 36.dp); Text("App lock", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text(
+                        if (AppLock.enabled) "Kinhold asks for your PIN when it opens, and when you come back to it after a while." else "Optional. Ask for a PIN before Kinhold opens, so someone who picks up your phone cannot read the tree.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                    )
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!AppLock.enabled) {
+                            DialogButton("Turn on", { onLock(LockSetupMode.On) }, kind = ButtonKind.Primary)
+                        } else {
+                            DialogButton("Change PIN", { onLock(LockSetupMode.Change) }, kind = ButtonKind.Tonal)
+                            DialogButton("Turn off", { onLock(LockSetupMode.Off) }, kind = ButtonKind.Danger)
+                        }
+                    }
+                    if (AppLock.enabled) {
+                        Text("Lock again", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (d in com.inamibrahim.kinhold.model.LockDelay.entries) Pill(d.label, AppLock.delay == d, { AppLock.chooseDelay(d) })
+                        }
                     }
                 }
             }

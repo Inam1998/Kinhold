@@ -63,6 +63,9 @@ sealed interface Screen {
 
     data object More : Screen
 
+    /** Setting up, changing or turning off the optional PIN lock. */
+    data class LockSetup(val mode: LockSetupMode) : Screen
+
     /** The page with everything recorded about one person. */
     data class Person(val id: Int) : Screen
 
@@ -84,6 +87,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help -> "help"
             Screen.Settings -> "settings"
             Screen.More -> "more"
+            is Screen.LockSetup -> "lock|${s.mode.name}"
             is Screen.Person -> "person|${s.id}"
             is Screen.Share -> "share|${s.id}"
             Screen.Merge -> "merge"
@@ -102,6 +106,8 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Help
         } else if (text == "settings") {
             Screen.Settings
+        } else if (text.startsWith("lock|")) {
+            Screen.LockSetup(LockSetupMode.entries.firstOrNull { it.name == text.substringAfter("|") } ?: LockSetupMode.On)
         } else if (text == "more") {
             Screen.More
         } else if (text == "merge") {
@@ -220,6 +226,11 @@ private fun KinholdContent(vm: KinholdViewModel) {
             HelpScreen(listScroll = scrolls.scroll("help"), onClose = { screen = if (family.size == 0) Screen.Tree else Screen.More })
         }
 
+        target is Screen.LockSetup -> {
+            BackHandler { screen = Screen.Settings }
+            LockSetupScreen((target as Screen.LockSetup).mode, onDone = { screen = Screen.Settings }, onCancel = { screen = Screen.Settings })
+        }
+
         target is Screen.Share -> {
             val shown = (target as Screen.Share).id
             BackHandler { screen = Screen.Person(shown) }
@@ -256,7 +267,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Settings -> {
             BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
-            SettingsScreen(family, scroll = scrolls.scroll("settings"), onChooseMe = vm::setMe, onBack = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+            SettingsScreen(family, scroll = scrolls.scroll("settings"), onChooseMe = vm::setMe, onLock = { screen = Screen.LockSetup(it) }, onBack = { screen = if (family.size == 0) Screen.Tree else Screen.More })
         }
 
         target is Screen.Backup -> {
@@ -463,7 +474,7 @@ private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
     Screen.Backup, Screen.Settings, Screen.Help, is Screen.Share, is Screen.Form -> 2
-    Screen.Merge -> 3
+    Screen.Merge, is Screen.LockSetup -> 3
 }
 
 private class NavMemory(var previous: Screen)
@@ -493,6 +504,7 @@ private fun Screen.key(): String = when (this) {
     Screen.Settings -> "settings"
     Screen.Help -> "help"
     Screen.Merge -> "merge"
+    is Screen.LockSetup -> "locksetup"
     is Screen.Person -> "person"
     is Screen.Share -> "share"
     is Screen.Form -> "form"

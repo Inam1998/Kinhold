@@ -4,7 +4,7 @@ package com.inamibrahim.kinhold.model
  * One topic per feature a person can use. Adding a feature means adding a topic here and a page in [HelpGuide]; a test
  * fails if a topic has no page, which keeps the rule that every feature is explained, with its limits.
  */
-enum class HelpTopic { GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
+enum class HelpTopic { Lock, GettingStarted, Navigating, People, Events, Sharing, Relatives, Photos, Deleting, Backups, Restoring, Gedcom, Settings, Privacy }
 
 class HelpSection(val heading: String, val text: String)
 
@@ -229,6 +229,23 @@ object HelpGuide {
             ),
         ),
         HelpPage(
+            topic = HelpTopic.Lock,
+            title = "App lock",
+            summary = "An optional PIN before Kinhold opens.",
+            sections = listOf(
+                HelpSection("Turning it on", "Open More, then Settings, then App lock, and choose Turn on. Pick a PIN of 4 to 8 digits and enter it twice. The lock is off until you do this."),
+                HelpSection("How it works", "Kinhold asks for the PIN when it opens, and when you come back to it after the time you chose (immediately, 1 minute or 5 minutes). While the lock is on, Kinhold also hides its picture in the list of recent apps and does not allow screenshots."),
+                HelpSection("Forgot the PIN?", "On the lock screen choose Forgot the PIN and prove who you are with your phone's own screen lock. The lock is then turned off, and you can set a new PIN in Settings."),
+                HelpSection("Changing or turning it off", "In Settings, choose Change PIN or Turn off. You type the current PIN first."),
+            ),
+            limits = listOf(
+                "The lock keeps people out of the app. It does not encrypt your tree, backup files or share files, which anyone who has them can read.",
+                "If your phone has no screen lock, a forgotten PIN cannot be reset, and the only way back in is to clear Kinhold's data, which deletes the tree. Kinhold warns you before you turn the lock on, and a backup folder lets you restore.",
+                "After five wrong tries in a row you must wait, 30 seconds at first and longer after more wrong tries.",
+                "The PIN is stored on this phone as a scrambled value, not in your tree or in backups, so restoring a backup never changes the lock.",
+            ),
+        ),
+        HelpPage(
             topic = HelpTopic.Privacy,
             title = "Privacy",
             summary = "Where your tree is kept.",
@@ -237,7 +254,7 @@ object HelpGuide {
                 HelpSection("When it leaves the phone", "Only when you save a backup or GEDCOM file, or share one yourself."),
             ),
             limits = listOf(
-                "There is no app lock or password yet, so anyone who can open your phone and this app can see your tree.",
+                "Unless you turn on the optional app lock, anyone who can open your phone and this app can see your tree.",
                 "Backup and GEDCOM files are not encrypted.",
             ),
         ),

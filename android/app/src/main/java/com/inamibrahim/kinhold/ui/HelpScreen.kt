@@ -72,6 +72,7 @@ private fun look(topic: HelpTopic): Pair<ImageVector, Color> = when (topic) {
     HelpTopic.Gedcom -> Icons.Filled.Send to Tones.Violet
     HelpTopic.Settings -> Icons.Filled.Settings to Tones.Sky
     HelpTopic.Privacy -> Icons.Filled.Lock to Tones.Teal
+    HelpTopic.Lock -> Icons.Filled.Lock to Tones.Mint
 }
 
 /** Pages whose title, summary, sections or limits contain [query] (ignoring case), each with the line that matched. */
