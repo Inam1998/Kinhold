@@ -3,6 +3,8 @@ package com.inamibrahim.kinhold.data
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import com.inamibrahim.kinhold.model.BackupCodec
+import com.inamibrahim.kinhold.model.BackupData
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDraft
@@ -14,6 +16,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
+import java.time.Instant
 
 /** How a new person is connected to someone already in the tree. */
 sealed interface Relation {
@@ -27,11 +32,24 @@ sealed interface Relation {
     data class SpouseOf(val personId: Int) : Relation
 }
 
+/** A person just deleted, with who they were linked to, so the delete can be undone. */
+class DeletedPerson(
+    val person: Person,
+    val parentIds: List<Int>,
+    val childIds: List<Int>,
+    val partnerIds: List<Int>,
+)
+
 /**
  * Reads and changes the stored tree. Every change runs inside one database transaction and then publishes a fresh
  * [Family] snapshot, so the screen always shows what is really saved. Changes are applied one at a time.
+ * [safetyFile] holds a copy of the tree as it was just before it was last replaced by a restore.
  */
-class FamilyRepository(context: Context, dbName: String? = FamilyDb.FILE_NAME) {
+class FamilyRepository(
+    context: Context,
+    dbName: String? = FamilyDb.FILE_NAME,
+    private val safetyFile: File = File(context.applicationContext.filesDir, "safety-before-restore.json"),
+) {
     private val helper = FamilyDb(context.applicationContext, dbName)
     private val lock = Mutex()
     private val _family = MutableStateFlow(Family.Empty)
@@ -67,10 +85,61 @@ class FamilyRepository(context: Context, dbName: String? = FamilyDb.FILE_NAME) {
         Unit
     }
 
-    /** Removes a person and every link to them. Their relatives stay. */
-    suspend fun deletePerson(id: Int) = changing { db ->
+    /** Removes a person and every link to them. Their relatives stay. Returns what is needed to undo it. */
+    suspend fun deletePerson(id: Int): DeletedPerson? = changing { db ->
+        val snapshot = _family.value
+        if (id !in snapshot) return@changing null
+        val record = DeletedPerson(
+            person = snapshot.person(id),
+            parentIds = snapshot.parentsOf(id).map { it.id },
+            childIds = snapshot.childrenOf(id).map { it.id },
+            partnerIds = snapshot.spousesOf(id).map { it.id },
+        )
         db.delete("person", "id = ?", arrayOf(id.toString()))
-        Unit
+        record
+    }
+
+    /** Puts a deleted person back with the same id and the same links to relatives who are still in the tree. */
+    suspend fun restoreDeleted(deleted: DeletedPerson) = changing { db ->
+        db.insertWithId(deleted.person.id, deleted.person.toDraft())
+        for (parent in deleted.parentIds) if (db.exists(parent)) db.insertLink(child = deleted.person.id, parent = parent)
+        for (child in deleted.childIds) if (db.exists(child)) db.insertLink(child = child, parent = deleted.person.id)
+        for (partner in deleted.partnerIds) if (db.exists(partner)) db.insertPartnership(deleted.person.id, partner)
+    }
+
+    /** The whole tree as backup-file text. */
+    suspend fun exportBackup(): String = lock.withLock { BackupCodec.encode(_family.value, Instant.now().toString()) }
+
+    /**
+     * Replaces the whole tree with [data]. The tree as it is now is first written to the safety copy, so a restore can
+     * be undone, and the replacement happens in one transaction: either all of it is stored or none of it.
+     */
+    suspend fun replaceAll(data: BackupData) = changing { db ->
+        writeSafetyCopy(_family.value)
+        db.delete("person", null, null)
+        for (p in data.people) db.insertWithId(p.id, p.toDraft())
+        for ((child, parent) in data.parentLinks) db.insertLink(child, parent)
+        for ((a, b) in data.partnerships) db.insertPartnership(a, b)
+    }
+
+    /** Whether a tree from before the last restore is kept. */
+    fun hasSafetyCopy(): Boolean = safetyFile.isFile && safetyFile.length() > 0
+
+    /** Brings back the tree from before the last restore. The tree being replaced becomes the new safety copy. */
+    suspend fun undoRestore() {
+        val saved = withContext(Dispatchers.IO) { BackupCodec.decode(safetyFile.readText()) }
+        replaceAll(saved)
+    }
+
+    // Written beside the real file and renamed, so a crash can never leave a half-written safety copy.
+    private fun writeSafetyCopy(family: Family) {
+        if (family.size == 0) return
+        val temp = File(safetyFile.parentFile, safetyFile.name + ".tmp")
+        temp.writeText(BackupCodec.encode(family, Instant.now().toString()))
+        if (!temp.renameTo(safetyFile)) {
+            safetyFile.delete()
+            if (!temp.renameTo(safetyFile)) throw IOException("Could not save a safety copy of the tree")
+        }
     }
 
     /** Fills an empty tree with an invented family. Does nothing if there are already people. */
@@ -146,6 +215,13 @@ private fun PersonDraft.toValues() = ContentValues().apply {
 }
 
 private fun SQLiteDatabase.insertPerson(draft: PersonDraft): Int = insertOrThrow("person", null, draft.toValues()).toInt()
+
+private fun SQLiteDatabase.insertWithId(id: Int, draft: PersonDraft) {
+    insertOrThrow("person", null, draft.toValues().apply { put("id", id) })
+}
+
+private fun SQLiteDatabase.exists(id: Int): Boolean =
+    rawQuery("SELECT 1 FROM person WHERE id = ?", arrayOf(id.toString())).use { it.moveToFirst() }
 
 private fun SQLiteDatabase.insertLink(child: Int, parent: Int) {
     insertWithOnConflict(

@@ -2,23 +2,32 @@ package com.inamibrahim.kinhold.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.inamibrahim.kinhold.data.DeletedPerson
 import com.inamibrahim.kinhold.data.KinholdViewModel
 import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Sex
+import kotlinx.coroutines.delay
+
+/** How long the Undo button stays after a delete. */
+private const val UNDO_MILLIS = 10_000L
 
 /** Which screen is showing. Kept across rotation by [ScreenSaver]. */
 sealed interface Screen {
     data object Tree : Screen
+
+    data object Backup : Screen
 
     /** The person form: [editing] is the person being changed, or null when adding one with [relation] to someone. */
     data class Form(val editing: Int?, val relation: Relation?) : Screen
@@ -28,7 +37,8 @@ private val ScreenSaver = Saver<Screen, String>(
     save = { s ->
         when (s) {
             Screen.Tree -> "tree"
-            is Screen.Form -> "form|${s.editing ?: ""}|" + when (val r = s.relation) {
+            Screen.Backup -> "backup"
+            is Screen.Form ->"form|${s.editing ?: ""}|" + when (val r = s.relation) {
                 null -> ""
                 is Relation.ParentOf -> "p${r.childId}"
                 is Relation.ChildOf -> "c${r.parentId}"
@@ -37,7 +47,9 @@ private val ScreenSaver = Saver<Screen, String>(
         }
     },
     restore = { text ->
-        if (!text.startsWith("form|")) {
+        if (text == "backup") {
+            Screen.Backup
+        } else if (!text.startsWith("form|")) {
             Screen.Tree
         } else {
             val parts = text.split("|")
@@ -61,10 +73,23 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
     val family by vm.family.collectAsState()
     var screen by rememberSaveable(stateSaver = ScreenSaver) { mutableStateOf<Screen>(Screen.Tree) }
     var focusId by rememberSaveable { mutableIntStateOf(-1) }
+    // The person just deleted, offered for undo for a few seconds.
+    var undo by remember { mutableStateOf<DeletedPerson?>(null) }
+    LaunchedEffect(undo) {
+        if (undo != null) {
+            delay(UNDO_MILLIS)
+            undo = null
+        }
+    }
 
     val form = screen as? Screen.Form
     when {
         !vm.loaded -> ScreenBackground { }
+
+        screen is Screen.Backup -> {
+            BackHandler { screen = Screen.Tree }
+            BackupScreen(vm = vm, peopleCount = family.size, onBack = { screen = Screen.Tree })
+        }
 
         form != null -> {
             val editing = form.editing?.takeIf { it in family }?.let { family.person(it) }
@@ -84,7 +109,16 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
                         }
                     }
                 },
-                onDelete = if (editing != null) ({ vm.delete(editing.id) { screen = Screen.Tree } }) else null,
+                onDelete = if (editing != null) {
+                    {
+                        vm.delete(editing.id) { deleted ->
+                            undo = deleted
+                            screen = Screen.Tree
+                        }
+                    }
+                } else {
+                    null
+                },
                 onCancel = { screen = Screen.Tree },
             )
         }
@@ -99,8 +133,24 @@ fun KinholdApp(vm: KinholdViewModel = viewModel()) {
             // The person in focus may have been deleted, or none was chosen yet.
             focusId = if (focusId in family) focusId else family.defaultFocus()?.id ?: family.people.first().id,
             onFocus = { focusId = it },
-            onAdd = { screen = Screen.Form(null, it) },
-            onEdit = { screen = Screen.Form(it, null) },
+            onAdd = {
+                undo = null
+                screen = Screen.Form(null, it)
+            },
+            onEdit = {
+                undo = null
+                screen = Screen.Form(it, null)
+            },
+            lastBackup = vm.lastBackup,
+            onBackup = {
+                undo = null
+                screen = Screen.Backup
+            },
+            undoText = undo?.let { "Deleted ${it.person.name}" },
+            onUndo = {
+                undo?.let(vm::undoDelete)
+                undo = null
+            },
         )
     }
 }

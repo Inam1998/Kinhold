@@ -13,8 +13,8 @@ android {
         // Old and slow phones count as much as new ones, so the floor is Android 8.
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -51,6 +51,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
 
     testImplementation(libs.junit)
+    // Android's own org.json is only a stub on the desktop, so the unit tests use the real library.
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)

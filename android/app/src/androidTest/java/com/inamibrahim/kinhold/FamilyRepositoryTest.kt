@@ -5,15 +5,20 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.inamibrahim.kinhold.data.FamilyRepository
 import com.inamibrahim.kinhold.data.Relation
+import com.inamibrahim.kinhold.model.BackupCodec
+import com.inamibrahim.kinhold.model.BackupData
+import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Sex
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 /**
  * Runs on the phone against real SQLite. Most tests use a throwaway in-memory database, so they never touch the tree
@@ -23,7 +28,16 @@ import org.junit.runner.RunWith
 class FamilyRepositoryTest {
     private val context: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    private fun memoryRepo() = FamilyRepository(context, dbName = null).also { runBlocking { it.load() } }
+    private val safetyFiles = ArrayList<File>()
+
+    private fun safetyFile() = File(context.cacheDir, "safety-test-${System.nanoTime()}.json").also { safetyFiles += it }
+
+    private fun memoryRepo() = FamilyRepository(context, dbName = null, safetyFile = safetyFile()).also { runBlocking { it.load() } }
+
+    @After
+    fun cleanUp() {
+        safetyFiles.forEach { it.delete() }
+    }
 
     @Test
     fun aNewTreeIsEmpty() {
@@ -122,14 +136,126 @@ class FamilyRepositoryTest {
     }
 
     @Test
+    fun aDeletedPersonCanBeBroughtBackWithTheirLinks() = runBlocking {
+        val repo = memoryRepo()
+        val grandparent = repo.addPerson(PersonDraft("Grandparent"))
+        val parent = repo.addPerson(PersonDraft("Parent", "Khan", Sex.Male, 1960), Relation.ChildOf(grandparent))
+        val spouse = repo.addPerson(PersonDraft("Spouse"), Relation.SpouseOf(parent))
+        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent))
+        val deleted = repo.deletePerson(parent)!!
+        assertTrue(parent !in repo.family.value)
+        repo.restoreDeleted(deleted)
+        val f = repo.family.value
+        assertEquals(parent, f.person(parent).id)
+        assertEquals("Khan", f.person(parent).surname)
+        assertEquals(1960, f.person(parent).born)
+        assertEquals(listOf(grandparent), f.parentsOf(parent).map { it.id })
+        assertEquals(listOf(spouse), f.spousesOf(parent).map { it.id })
+        assertEquals(setOf(parent, spouse), f.parentsOf(child).map { it.id }.toSet())
+    }
+
+    @Test
+    fun undoingADeleteSkipsRelativesWhoHaveSinceBeenDeleted() = runBlocking {
+        val repo = memoryRepo()
+        val parent = repo.addPerson(PersonDraft("Parent"))
+        val child = repo.addPerson(PersonDraft("Child"), Relation.ChildOf(parent))
+        val deleted = repo.deletePerson(parent)!!
+        repo.deletePerson(child)
+        repo.restoreDeleted(deleted)
+        assertEquals(listOf("Parent"), repo.family.value.people.map { it.given })
+    }
+
+    @Test
+    fun deletingSomeoneWhoIsNotThereChangesNothing() = runBlocking {
+        val repo = memoryRepo()
+        repo.addPerson(PersonDraft("Only"))
+        assertNull(repo.deletePerson(12345))
+        assertEquals(1, repo.family.value.size)
+    }
+
+    @Test
+    fun restoringABackupReplacesTheTreeAndKeepsTheOldOneForUndo() = runBlocking {
+        val source = memoryRepo()
+        val me = source.addPerson(PersonDraft("Backup", "Person", born = 1980))
+        source.addPerson(PersonDraft("Mum"), Relation.ParentOf(me))
+        val backup = BackupCodec.decode(source.exportBackup())
+
+        val repo = memoryRepo()
+        repo.addPerson(PersonDraft("Current"))
+        repo.addPerson(PersonDraft("Tree"))
+        assertTrue(!repo.hasSafetyCopy())
+
+        repo.replaceAll(backup)
+        val f = repo.family.value
+        assertEquals(2, f.size)
+        assertEquals(setOf("Backup", "Mum"), f.people.map { it.given }.toSet())
+        assertEquals("Mum", f.parentsOf(me).single().given)
+        assertTrue(repo.hasSafetyCopy())
+
+        repo.undoRestore()
+        assertEquals(setOf("Current", "Tree"), repo.family.value.people.map { it.given }.toSet())
+        // Undoing swaps the two trees, so the restored one is now the safety copy.
+        repo.undoRestore()
+        assertEquals(setOf("Backup", "Mum"), repo.family.value.people.map { it.given }.toSet())
+    }
+
+    @Test
+    fun aRestoreThatFailsHalfwayLeavesTheTreeExactlyAsItWas() = runBlocking {
+        val repo = memoryRepo()
+        repo.addPerson(PersonDraft("Keep", "Me"))
+        // Two people with the same id make the database refuse the second one after the first was stored.
+        val broken = BackupData(
+            people = listOf(Person(1, "A", ""), Person(1, "B", "")),
+            parentLinks = emptyList(),
+            partnerships = emptyList(),
+        )
+        try {
+            repo.replaceAll(broken)
+            fail("Expected the restore to fail")
+        } catch (expected: Exception) {
+            // Everything it did must have been undone, including removing the existing tree.
+        }
+        assertEquals(listOf("Keep"), repo.family.value.people.map { it.given })
+        // The tree on disk, not just the one on screen.
+        repo.load()
+        assertEquals(listOf("Keep"), repo.family.value.people.map { it.given })
+    }
+
+    @Test
+    fun aBackupOfALargeTreeRestoresExactly() = runBlocking {
+        val source = memoryRepo()
+        source.addSampleFamily(1000)
+        val backup = BackupCodec.decode(source.exportBackup())
+        val repo = memoryRepo()
+        repo.replaceAll(backup)
+        val a = source.family.value
+        val b = repo.family.value
+        assertEquals(1000, b.size)
+        for (p in a.people) {
+            assertEquals(p.name, b.person(p.id).name)
+            assertEquals(a.parentsOf(p.id).map { it.id }, b.parentsOf(p.id).map { it.id })
+            assertEquals(a.spousesOf(p.id).map { it.id }.sorted(), b.spousesOf(p.id).map { it.id }.sorted())
+        }
+    }
+
+    @Test
+    fun newPeopleAddedAfterARestoreDoNotReuseRestoredIds() = runBlocking {
+        val repo = memoryRepo()
+        repo.replaceAll(BackupData(listOf(Person(500, "High", "Id")), emptyList(), emptyList()))
+        val id = repo.addPerson(PersonDraft("New"))
+        assertTrue("New id $id must differ from 500", id != 500)
+        assertEquals(2, repo.family.value.size)
+    }
+
+    @Test
     fun theTreeSurvivesClosingAndReopeningTheApp() = runBlocking {
         val file = "kinhold-test-${System.nanoTime()}.db"
         try {
-            val first = FamilyRepository(context, file)
+            val first = FamilyRepository(context, file, safetyFile())
             val me = first.addPerson(PersonDraft("Me", "Khan", born = 1990))
             first.addPerson(PersonDraft("Mum", "Khan"), Relation.ParentOf(me))
 
-            val reopened = FamilyRepository(context, file)
+            val reopened = FamilyRepository(context, file, safetyFile())
             reopened.load()
             val f = reopened.family.value
             assertEquals(2, f.size)

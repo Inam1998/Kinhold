@@ -36,12 +36,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.inamibrahim.kinhold.data.Relation
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.Person
+import com.inamibrahim.kinhold.model.describeAge
 import com.inamibrahim.kinhold.tree.layoutFocus
 
 /**
@@ -55,6 +59,10 @@ fun TreeScreen(
     onFocus: (Int) -> Unit,
     onAdd: (Relation) -> Unit,
     onEdit: (Int) -> Unit,
+    lastBackup: Long?,
+    onBackup: () -> Unit,
+    undoText: String?,
+    onUndo: () -> Unit,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
     val layout = remember(family, focusId) { layoutFocus(family, focusId) }
@@ -67,8 +75,15 @@ fun TreeScreen(
     ScreenBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
+            val now = System.currentTimeMillis()
+            val backupText = lastBackup?.let { "Backed up ${describeAge(it, now)}" } ?: "Not backed up yet"
+            // Worth a nudge once there is real work to lose: amber when never backed up, or not for a month.
+            val stale = family.size >= 5 && (lastBackup == null || now - lastBackup > 30L * 86_400_000L)
             Text(
-                "%,d %s in this tree".format(family.size, if (family.size == 1) "person" else "people"),
+                buildAnnotatedString {
+                    append("%,d %s in this tree  ·  ".format(family.size, if (family.size == 1) "person" else "people"))
+                    withStyle(SpanStyle(color = if (stale) Tones.Amber else Palette.TextMuted)) { append(backupText) }
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.TextMuted,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
@@ -80,6 +95,7 @@ fun TreeScreen(
                 Pill("Find", selected = searching, onClick = { searching = !searching })
                 Pill("Recenter", selected = false, onClick = { state.show(layout) })
                 Pill("Oldest", selected = false, onClick = { family.oldest()?.let { onFocus(it.id) } })
+                Pill("Backup", selected = false, onClick = onBackup)
             }
             Box(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
                 TreeCanvas(layout = layout, state = state, onFocus = { onFocus(it.person.id) })
@@ -92,6 +108,26 @@ fun TreeScreen(
                         },
                         modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 20.dp),
                     )
+                }
+            }
+            if (undoText != null && !searching) {
+                AppCard(Modifier.padding(horizontal = 20.dp).fillMaxWidth()) {
+                    Row(
+                        Modifier.padding(start = 20.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(undoText, style = MaterialTheme.typography.bodyLarge, color = Palette.Text, modifier = Modifier.weight(1f))
+                        Text(
+                            "Undo",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Palette.Accent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable(onClick = onUndo)
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                        )
+                    }
                 }
             }
             // Below the tree, not over it, so the rows at the bottom are never hidden behind the card.

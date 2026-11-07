@@ -133,7 +133,7 @@ fun PersonFormScreen(
             text = {
                 Text(
                     "They are removed from the tree along with their links to parents, partners and children. " +
-                        "Those relatives stay. This cannot be undone.",
+                        "Those relatives stay. You can undo it for a few seconds afterwards.",
                     color = Palette.TextMuted,
                 )
             },

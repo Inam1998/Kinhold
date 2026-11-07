@@ -16,6 +16,13 @@ class Family private constructor(
 
     operator fun contains(id: Int): Boolean = id in byId
 
+    /** Every (child, parent) pair, for saving. */
+    fun parentLinks(): List<Pair<Int, Int>> = parentIds.flatMap { (child, parents) -> parents.map { child to it } }
+
+    /** Every couple once, with the smaller id first, for saving. */
+    fun partnerships(): List<Pair<Int, Int>> =
+        spouseIds.flatMap { (a, others) -> others.filter { a < it }.map { a to it } }
+
     fun person(id: Int): Person = byId.getValue(id)
 
     /** Father first, then mother, then anyone whose sex is not recorded. */
