@@ -103,7 +103,7 @@ fun PersonPageScreen(
             ScreenHeader("Person", person.name, Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), onBack = onBack)
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionTile("Edit", Icons.Filled.Edit, onEdit, Modifier.weight(1f), tone = Tones.Amber)
-                ActionTile("Link person", Icons.Filled.Add, { linkNotice = null; choosingLinkType = true }, Modifier.weight(1f), tone = Tones.Violet)
+                ActionTile("Link person", AppIcons.Link, { linkNotice = null; choosingLinkType = true }, Modifier.weight(1f), tone = Tones.Violet)
                 ActionTile("Share", Icons.Filled.Share, onShare, Modifier.weight(1f), tone = Tones.Teal)
             }
             linkNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Accent, modifier = Modifier.padding(start = 24.dp, end = 20.dp, bottom = 4.dp)) }
@@ -116,8 +116,8 @@ fun PersonPageScreen(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (canCall) {
                         ActionTile("Call", Icons.Filled.Call, { Actions.call(context, person.phone) }, Modifier.weight(1f), tone = Tones.Mint)
-                        ActionTile("Text", Icons.Filled.Send, { Actions.text(context, person.phone) }, Modifier.weight(1f), tone = Tones.Sky)
-                        ActionTile("WhatsApp", Icons.Filled.Send, { if (!Actions.whatsApp(context, person.phone)) notice = "WhatsApp needs the number with its country code, such as +92 300 1234567. Edit the number to add it." }, Modifier.weight(1f), tone = Tones.Teal)
+                        ActionTile("Text", AppIcons.Chat, { Actions.text(context, person.phone) }, Modifier.weight(1f), tone = Tones.Sky)
+                        ActionTile("WhatsApp", AppIcons.WhatsApp, { if (!Actions.whatsApp(context, person.phone)) notice = "WhatsApp needs the number with its country code, such as +92 300 1234567. Edit the number to add it." }, Modifier.weight(1f), tone = Tones.Teal)
                     }
                     if (canMail) ActionTile("Email", Icons.Filled.Email, { Actions.email(context, person.email) }, Modifier.weight(1f), tone = Tones.Amber)
                     if (pin != null || person.address.isNotBlank()) ActionTile("Map", Icons.Filled.LocationOn, { Actions.map(context, person.name, person.address, pin) }, Modifier.weight(1f), tone = Tones.Coral)
@@ -134,7 +134,7 @@ fun PersonPageScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Avatar(person, 72.dp, ring = 3.dp)
                         Column(Modifier.padding(start = 16.dp)) {
-                            val dates = person.lifeDates()
+                            val dates = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.lifeLine(person.birthDate, person.deathDate) else person.lifeDates()
                             if (dates.isNotEmpty()) Text(dates, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                             val age = person.ageText(java.time.LocalDate.now())
                             if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber)
@@ -152,7 +152,7 @@ fun PersonPageScreen(
                         }
                     }
                 }
-                item { Column(Modifier.padding(top = 12.dp)) { Text("More photos", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)); GallerySection(vm, person.id) } }
+                item { Column(Modifier.padding(top = 12.dp)) { DetailsHeading("More photos", Modifier.padding(bottom = 8.dp)); GallerySection(vm, person.id) } }
                 val parentList = family.parentsOf(person.id)
                 if (parentList.isNotEmpty()) {
                     item {
@@ -179,12 +179,7 @@ fun PersonPageScreen(
                 }
                 items(items) { item ->
                     when (item) {
-                        is PageItem.Heading -> Text(
-                            item.text,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Palette.TextMuted,
-                            modifier = Modifier.padding(start = 4.dp, top = 14.dp),
-                        )
+                        is PageItem.Heading -> DetailsHeading(item.text, Modifier.padding(top = 18.dp))
                         is PageItem.Line -> Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                             Text(item.label, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.weight(0.35f))
                             Text(item.value, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.weight(0.65f))
@@ -299,7 +294,7 @@ fun PersonPageScreen(
                 )
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Cancel", { removing = null }, kind = ButtonKind.Neutral)
                     DialogButton(
                         "Remove link",
@@ -366,7 +361,7 @@ private fun childLabel(kind: com.inamibrahim.kinhold.model.LinkKind): String = w
 @Composable
 private fun LinkBlock(heading: String, rows: List<LinkRowData>) {
     Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(heading, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
+        DetailsHeading(heading)
         for (row in rows) {
             AppCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -374,8 +369,8 @@ private fun LinkBlock(heading: String, rows: List<LinkRowData>) {
                         Text(row.name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                         row.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Tones.Rose) }
                     }
-                    row.onChange?.let { DialogButton("Change", it, kind = ButtonKind.Neutral) }
-                    DialogButton("Unlink", row.onRemove, kind = ButtonKind.Neutral)
+                    row.onChange?.let { DialogButton("Change", it, kind = ButtonKind.Neutral, small = true) }
+                    DialogButton("Unlink", row.onRemove, kind = ButtonKind.Neutral, small = true)
                 }
             }
         }
@@ -456,4 +451,10 @@ private fun LinkKindDialog(child: Person, parent: Person, current: com.inamibrah
         },
         confirmButton = { DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral) },
     )
+}
+
+/** A section heading on the Details page (Parents, Children, Timeline and so on): larger and brighter than the rows under it so the page is easy to scan. */
+@Composable
+private fun DetailsHeading(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = Palette.Text, modifier = modifier.padding(start = 4.dp))
 }

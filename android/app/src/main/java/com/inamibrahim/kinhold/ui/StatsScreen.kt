@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
@@ -140,9 +141,12 @@ private fun Line(label: String, value: String) {
 /** A line naming a person; tapping it opens them on the tree. */
 @Composable
 private fun PersonLine(label: String, name: String, detail: String, onOpen: (Int) -> Unit, id: Int) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(14.dp)).clickable { onOpen(id) }.padding(vertical = 4.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
-        Text(listOf(name, detail).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
+            Text(listOf(name, detail).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+        }
+        DialogButton("Show", { onOpen(id) }, Modifier.padding(start = 10.dp), kind = ButtonKind.Tonal, icon = Icons.Filled.ArrowForward, small = true)
     }
 }
 

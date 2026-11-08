@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import androidx.compose.runtime.setValue
 import com.inamibrahim.kinhold.model.Family
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +50,7 @@ import androidx.compose.ui.unit.dp
 
 /** Theme and accent colour. Changes apply at once and are remembered. */
 @Composable
-fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollState, onChooseMe: (Int?) -> Unit, onLock: (LockSetupMode) -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(family: Family, onDeveloper: () -> Unit, scroll: androidx.compose.foundation.ScrollState, onChooseMe: (Int?) -> Unit, onLock: (LockSetupMode) -> Unit, onBack: () -> Unit) {
     var picking by rememberSaveable { mutableStateOf(false) }
     ScreenBackground {
         Column(
@@ -111,7 +114,7 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
                     )
                     EqualRow(3) {
                         for (m in listOf(ThemeMode.System, ThemeMode.Light, ThemeMode.Dark)) {
-                            Pill(if (m == ThemeMode.System) "System" else m.name, AppSettings.mode == m, { AppSettings.chooseMode(m) }, Modifier.weight(1f))
+                            Pill(if (m == ThemeMode.System) "System" else m.name, AppSettings.mode == m, { AppSettings.chooseMode(m) }, Modifier.weight(1f), icon = when (m) { ThemeMode.System -> AppIcons.PhoneScreen; ThemeMode.Light -> AppIcons.Sun; ThemeMode.Dark -> AppIcons.Moon })
                         }
                     }
                 }
@@ -140,11 +143,29 @@ fun SettingsScreen(family: Family, scroll: androidx.compose.foundation.ScrollSta
             )
             AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Settings, Tones.Amber, 36.dp); Text("Dates", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
-                    Text("Show the Hijri date beside a full date, for example on the Details page.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.DateRange, Tones.Amber, 36.dp); Text("Dates", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text("Show the Hijri date beside every full date, on the tree card and the Details page.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
                     Pill(if (AppSettings.showHijri) "Hijri dates: on" else "Hijri dates: off", AppSettings.showHijri, { AppSettings.chooseShowHijri(!AppSettings.showHijri) }, Modifier.fillMaxWidth())
                 }
             }
+            // Holding the version for ten seconds opens a hidden page, as in the author's other apps.
+            val version = AppVersion.of(androidx.compose.ui.platform.LocalContext.current)
+            Text(
+                "Kinhold ${version.name}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Palette.TextMuted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(onPress = {
+                            // A timeout means the finger stayed down the whole time; lifting or moving away ends the wait.
+                            if (kotlinx.coroutines.withTimeoutOrNull(10_000L) { tryAwaitRelease() } == null) onDeveloper()
+                        })
+                    }
+                    .padding(vertical = 16.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
             Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
         }
     }

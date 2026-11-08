@@ -8,6 +8,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.Alignment
@@ -71,6 +73,12 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
 
     val chartDone = { r: Result<Unit> -> message = r.fold({ "Chart saved." to false }, { (it.message ?: "The chart could not be saved.") to true }) }
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri -> if (uri != null) vm.exportChart(uri, person.id, true, chartDone) }
+    val webSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+        if (uri != null) vm.exportWebPage(uri, person.id, scope) { r -> message = r.fold({ "Web page saved with $it ${if (it == 1) "person" else "people"}." to false }, { (it.message ?: "The page could not be made.") to true }) }
+    }
+    val sheetSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) vm.exportFamilySheet(uri, person.id) { r -> message = r.fold({ "Family sheet saved: $it ${if (it == 1) "page" else "families"}." to false }, { (it.message ?: "The sheet could not be made.") to true }) }
+    }
     val pngSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) vm.exportChart(uri, person.id, false, chartDone) }
 
     ScreenBackground {
@@ -165,6 +173,28 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
             AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        ToneIcon(Icons.Filled.Info, Tones.Sky, 36.dp)
+                        Text("Send a web page", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
+                    }
+                    Text(
+                        "For a relative who does not use Kinhold: one page that opens in any browser, with no app and no internet. They can search the same $count ${if (count == 1) "person" else "people"} and move from parents to children by tapping. " +
+                            "Names, dates, places and notes only: no photos, contact details, events or sources. It is not encrypted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+                    )
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DialogButton("Save the web page", { webSaver.launch("kinhold-family-${person.name.replace(' ', '-')}.html") }, kind = ButtonKind.Tonal)
+                        DialogButton("Send the web page", {
+                            val p = SendFile.prepare(context, "kinhold-family-${person.name}.html", "text/html", "Family of ${person.name}")
+                            vm.exportWebPage(p.uri, person.id, scope) { r -> r.fold({ SendFile.send(context, p); message = "Web page ready with $it ${if (it == 1) "person" else "people"}. Choose where to send it." to false }, { message = (it.message ?: "The page could not be made.") to true }) }
+                        }, kind = ButtonKind.Tonal, icon = Icons.Filled.Send)
+                    }
+                }
+            }
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         ToneIcon(Icons.Filled.Share, Tones.Violet, 36.dp)
                         Text("Print or send a picture", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
                     }
@@ -180,6 +210,27 @@ fun ShareScreen(vm: KinholdViewModel, family: Family, person: Person, onBack: ()
                         DialogButton("Send the picture", {
                             val p = SendFile.prepare(context, "kinhold-tree-${person.name}.png", "image/png", "Family tree of ${person.name}")
                             vm.exportChart(p.uri, person.id, false) { r -> r.fold({ SendFile.send(context, p) }, { message = (it.message ?: "The chart could not be made.") to true }) }
+                        }, kind = ButtonKind.Tonal, icon = Icons.Filled.Send)
+                    }
+                }
+            }
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ToneIcon(Icons.Filled.Favorite, Tones.Rose, 36.dp)
+                        Text("Print a family sheet", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp))
+                    }
+                    Text(
+                        "A family group sheet for ${person.name}: one page for each partner, with the two of them, their marriage and their children, with dates and places. A PDF to print, keep or send to a relative who does not use Kinhold.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+                    )
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DialogButton("Save the sheet as PDF", { sheetSaver.launch("kinhold-family-sheet-${person.name.replace(' ', '-')}.pdf") }, kind = ButtonKind.Tonal)
+                        DialogButton("Send the sheet", {
+                            val p = SendFile.prepare(context, "kinhold-family-sheet-${person.name}.pdf", "application/pdf", "Family sheet of ${person.name}")
+                            vm.exportFamilySheet(p.uri, person.id) { r -> r.fold({ SendFile.send(context, p) }, { message = (it.message ?: "The sheet could not be made.") to true }) }
                         }, kind = ButtonKind.Tonal, icon = Icons.Filled.Send)
                     }
                 }

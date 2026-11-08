@@ -21,6 +21,10 @@ import java.time.LocalDate
  * and years, no photos. One unit of the layout is one point in the PDF and [scale] pixels in the picture.
  */
 object TreeExport {
+    /** The font the chart is drawn in: the app sets it to its own (Inter), so a chart looks the same whatever font the phone uses. */
+    @Volatile
+    var typeface: Typeface = Typeface.DEFAULT
+
     private const val MARGIN = 36f
     private const val TITLE_H = 56f
     private const val FOOTER_H = 30f
@@ -32,9 +36,9 @@ object TreeExport {
     private fun draw(canvas: Canvas, layout: TreeLayout, title: String) {
         val (w, h) = sizeOf(layout)
         canvas.drawColor(Color.WHITE)
-        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 24, 40); textSize = 22f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 24, 40); textSize = 22f; typeface = Typeface.create(this@TreeExport.typeface, Typeface.BOLD) }
         canvas.drawText(TextUtils.ellipsize(title, titlePaint, w - 2 * MARGIN, TextUtils.TruncateAt.END).toString(), MARGIN, MARGIN + 14f, titlePaint)
-        val footer = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(120, 126, 140); textSize = 10f }
+        val footer = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(120, 126, 140); textSize = 10f; typeface = this@TreeExport.typeface }
         canvas.drawText("Made with Kinhold, ${LocalDate.now()}", MARGIN, h - 12f, footer)
 
         canvas.save()
@@ -47,8 +51,8 @@ object TreeExport {
         }
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.2f }
-        val name = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 24, 40); textSize = 14f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-        val years = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(90, 96, 110); textSize = 11.5f }
+        val name = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 24, 40); textSize = 14f; typeface = Typeface.create(this@TreeExport.typeface, Typeface.BOLD) }
+        val years = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(90, 96, 110); textSize = 11.5f; typeface = this@TreeExport.typeface }
         val room = TreeMetrics.NODE_W - 20f
         for (p in layout.people) {
             val tint = when (p.person.sex) {

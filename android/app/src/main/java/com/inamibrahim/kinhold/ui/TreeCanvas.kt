@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
@@ -293,6 +295,8 @@ fun TreeCanvas(
             .clipToBounds()
             .graphicsLayer { alpha = fade.value }
             .onSizeChanged { state.size = it }
+            // The tree is drawn, not built from controls, so a screen reader is told what it shows and where the controls are.
+            .semantics { contentDescription = "Family tree drawn around ${layout.people.firstOrNull { it.person.id == layout.focusId }?.person?.name ?: "the chosen person"}. Their details and relatives are in the card below; Find moves to anyone else." }
             .pointerInput(Unit) {
                 detectTreeGestures(
                     onDown = { state.stopFling() },

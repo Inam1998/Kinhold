@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,10 +42,26 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,7 +107,7 @@ fun ScreenBackground(modifier: Modifier = Modifier, maxContentWidth: androidx.co
 
 /** A small accent overline above a large bold title, left-aligned, with no bar or divider. */
 @Composable
-fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
+fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
             BackButton(onBack)
@@ -108,6 +125,10 @@ fun ScreenHeader(overline: String, title: String, modifier: Modifier = Modifier,
                 color = Palette.Text,
                 modifier = Modifier.padding(top = 2.dp),
             )
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(12.dp))
+            trailing()
         }
     }
 }
@@ -131,53 +152,119 @@ fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * A round button with only an icon, for actions whose picture says enough. Press and hold shows a small label with what it does, and the
+ * label is also what a screen reader says. Removing actions are tinted red.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun IconAction(icon: ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, danger: Boolean = false) {
+    val press = rememberPressScale()
+    androidx.compose.material3.TooltipBox(
+        positionProvider = androidx.compose.material3.TooltipDefaults.rememberTooltipPositionProvider(androidx.compose.material3.TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(description) } },
+        state = androidx.compose.material3.rememberTooltipState(),
+    ) {
+        Box(
+            modifier
+                .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
+                .size(46.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (danger) Palette.Danger.copy(alpha = if (Palette.dark) 0.22f else 0.14f) else Palette.SurfaceHigh)
+                .semantics { contentDescription = description }
+                .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = if (danger) Palette.Danger else Palette.Text, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** True inside a row of equally wide buttons: their icon and label sit together in the middle instead of starting at the left. */
+val LocalCenterButtons = androidx.compose.runtime.compositionLocalOf { false }
+
+/** Buttons whose label says they remove something are tinted red, wherever they are used. */
+fun isRemoving(label: String): Boolean {
+    val l = label.trim().lowercase()
+    return l.startsWith("delete") || l.startsWith("remove") || l.startsWith("clear") || l.startsWith("unlink")
+}
+
 /** A fully round chip: raised fill when off, the solid accent with dark text when selected. */
 @Composable
-fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun Pill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, small: Boolean = false) {
+    @Suppress("NAME_SHADOWING") val icon = icon ?: autoIcon(label)
+    val removing = isRemoving(label) && !selected
+    val centered = true && LocalCenterButtons.current.let { true }
     val press = rememberPressScale()
     Box(
         modifier
             .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
-            .height(38.dp)
+            .heightIn(min = if (small) 32.dp else 38.dp)
             .clip(RoundedCornerShape(50))
-            .background(animateColorAsState(if (selected) Palette.Accent else Palette.SurfaceHigh, tween(200), label = "pill").value)
-            .semantics(mergeDescendants = true) { contentDescription = label }
+            .background(animateColorAsState(if (selected) Palette.Accent else if (removing) Palette.Danger.copy(alpha = if (Palette.dark) 0.22f else 0.14f) else Palette.SurfaceHigh, tween(200), label = "pill").value)
+            .semantics(mergeDescendants = true) { contentDescription = label; if (selected) stateDescription = "Selected" }
             .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = if (small) 8.dp else 16.dp, vertical = if (small) 4.dp else 6.dp),
         // With an icon the content starts at the left, so the icons of buttons stacked or in a row line up; a plain label stays centred.
-        contentAlignment = if (icon != null) Alignment.CenterStart else Alignment.Center,
+        contentAlignment = if (icon != null && !centered) Alignment.CenterStart else Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val tint by animateColorAsState(if (selected) Palette.OnAccent else Palette.Text, tween(200), label = "pillText")
+            val tint by animateColorAsState(if (selected) Palette.OnAccent else if (removing) Palette.Danger else Palette.Text, tween(200), label = "pillText")
             if (icon != null) {
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = tint)
+            Text(label, style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = tint, maxLines = if (small) 1 else Int.MAX_VALUE, softWrap = !small)
         }
     }
 }
 
 /** The one main action on a screen: a tall, fully round button in the solid accent. */
 @Composable
-fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null) {
+    @Suppress("NAME_SHADOWING") val icon = icon ?: autoIcon(label)
     val press = rememberPressScale()
     Box(
         modifier
             .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
-            .height(52.dp)
+            .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(50))
             .background(if (enabled) Palette.Accent else Palette.SurfaceHigh)
             .clickable(enabled = enabled, interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 28.dp),
+            .padding(horizontal = 28.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = if (enabled) Palette.OnAccent else Palette.TextMuted,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val ink = if (enabled) Palette.OnAccent else Palette.TextMuted
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = ink)
+        }
+    }
+}
+
+/**
+ * The buttons at the bottom of a form, the same everywhere: Save across the full width, then Cancel and (when there is one) the
+ * removing action side by side, each with its icon and its label in the middle.
+ */
+@Composable
+fun FormActions(
+    saveLabel: String,
+    onSave: () -> Unit,
+    saveEnabled: Boolean,
+    onCancel: () -> Unit,
+    removeLabel: String?,
+    onRemove: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PrimaryButton(saveLabel, onSave, Modifier.fillMaxWidth(), enabled = saveEnabled, icon = androidx.compose.material.icons.Icons.Filled.Check)
+        EqualRow(2) {
+            DialogButton("Cancel", onCancel, Modifier.weight(1f), kind = ButtonKind.Neutral)
+            if (onRemove != null && removeLabel != null) DialogButton(removeLabel, onRemove, Modifier.weight(1f), kind = ButtonKind.Danger)
+        }
     }
 }
 
@@ -259,7 +346,7 @@ fun ActionTile(label: String, icon: ImageVector, onClick: () -> Unit, modifier: 
             .shadow(3.dp, shape, clip = false)
             .clip(shape)
             .background(if (selected) tone.copy(alpha = 0.28f) else Palette.SurfaceHigh)
-            .semantics(mergeDescendants = true) { contentDescription = label }
+            .semantics(mergeDescendants = true) { contentDescription = label; if (selected) stateDescription = "Selected" }
             .clickable(interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(vertical = if (compact) 6.dp else 10.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -319,7 +406,10 @@ enum class ButtonKind { Primary, Tonal, Neutral, Danger }
  * filled, with a ripple and a small press effect, like the buttons of the other apps.
  */
 @Composable
-fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Tonal, icon: ImageVector? = null, enabled: Boolean = true) {
+fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Tonal, icon: ImageVector? = null, enabled: Boolean = true, small: Boolean = false) {
+    @Suppress("NAME_SHADOWING") val icon = icon ?: autoIcon(label)
+    @Suppress("NAME_SHADOWING") val kind = if (kind != ButtonKind.Primary && isRemoving(label)) ButtonKind.Danger else kind
+    val centered = true && LocalCenterButtons.current.let { true }
     val press = rememberPressScale()
     val (fill, ink) = when (kind) {
         ButtonKind.Primary -> Palette.Accent to Palette.OnAccent
@@ -330,22 +420,22 @@ fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
     Row(
         modifier
             .graphicsLayer { scaleX = press.scale.value; scaleY = press.scale.value }
-            .height(44.dp)
+            .heightIn(min = if (small) 34.dp else 44.dp)
             .clip(RoundedCornerShape(50))
             .background(fill)
             .semantics(mergeDescendants = true) { contentDescription = label }
             .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
             .clickable(enabled = enabled, interactionSource = press.source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = if (small) 12.dp else 20.dp, vertical = if (small) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         // Icon first, then the label, starting at the left so icons line up between buttons of one group.
-        horizontalArrangement = if (icon != null) Arrangement.Start else Arrangement.Center,
+        horizontalArrangement = if (icon != null && !centered) Arrangement.Start else Arrangement.Center,
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(if (small) 16.dp else 18.dp))
+            Spacer(Modifier.width(if (small) 6.dp else 8.dp))
         }
-        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = ink)
+        Text(label, style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = ink)
     }
 }
 
@@ -361,6 +451,53 @@ fun EqualRow(perRow: Int, modifier: Modifier = Modifier, content: @Composable an
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         maxItemsInEachRow = perRow,
+        content = { androidx.compose.runtime.CompositionLocalProvider(LocalCenterButtons provides true) { content() } },
+    )
+}
+
+/**
+ * The buttons of a dialog. They sit side by side while they fit, and wrap onto the next line when the text is large, instead of
+ * being squeezed until a label breaks letter by letter.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun DialogButtons(centered: Boolean = false, content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, if (centered) Alignment.CenterHorizontally else Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
+}
+
+/**
+ * A fitting icon for a button that was given none, chosen from its label, so every action button carries one. Choices such as Male,
+ * Female, a number of generations or a theme name have no action in their label and stay plain.
+ */
+fun autoIcon(label: String): ImageVector? {
+    val l = label.trim().removePrefix("+").trim().lowercase()
+    fun has(vararg words: String) = words.any { l.startsWith(it) || l.contains(" $it") }
+    val i = androidx.compose.material.icons.Icons.Filled
+    return when {
+        l.isEmpty() -> null
+        has("unlink") -> AppIcons.Unlink
+        l == "no" || has("cancel", "close", "not now", "different person", "turn off", "turn the reminder off", "stop using", "dismiss", "not the same") -> i.Close
+        has("delete", "remove", "clear") -> i.Delete
+        has("skip", "continue without", "use theirs", "next", "start") -> i.ArrowForward
+        has("import", "open") -> i.KeyboardArrowUp
+        has("add") -> i.Add
+        has("undo") -> i.Refresh
+        has("send") -> i.Send
+        has("share") -> i.Share
+        has("save", "back up", "export") -> i.KeyboardArrowDown
+        has("import", "open") -> i.KeyboardArrowUp
+        has("settings") -> i.Settings
+        has("how kinhold", "help") -> i.Info
+        has("change", "choose", "adjust", "edit", "attach") -> i.Edit
+        has("reset", "swap", "replace") -> i.Refresh
+        has("take a photo") -> AppIcons.Camera
+        has("turn on") -> i.Check
+        has("done", "use", "keep", "confirm", "continue", "i understand", "same person", "fill", "join", "yes", "import") -> i.Check
+        else -> null
+    }
 }

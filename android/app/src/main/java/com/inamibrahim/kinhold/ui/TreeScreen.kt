@@ -140,10 +140,13 @@ fun TreeScreen(
     if (quickAdding) QuickAddDialog(family, focusId, suggest, onQuickAdd) { quickAdding = false }
 
     val landscape = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
+    // With large text the title, card and bar take most of the screen, so they use the compact layout (the same as landscape, except the action tiles stay in two rows).
+    val bigText = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.2f
+    val compactUi = landscape || bigText
 
     val header: @Composable () -> Unit = {
         // Landscape is short, so the big title is left out there and only the one-line status is kept.
-        if (!landscape) ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
+        if (!compactUi) ScreenHeader("Kinhold", "Family tree", Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
         val now = System.currentTimeMillis()
         val backupText = lastBackup?.let { "Backed up ${describeAge(it, now)}" } ?: "Not backed up yet"
         // Worth a nudge once there is real work to lose: amber when never backed up, or not for a month.
@@ -155,8 +158,34 @@ fun TreeScreen(
             },
             style = MaterialTheme.typography.bodyMedium,
             color = Palette.TextMuted,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = if (landscape) 10.dp else 4.dp, bottom = if (landscape) 0.dp else 12.dp),
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = if (compactUi) 10.dp else 4.dp, bottom = if (compactUi) 0.dp else 12.dp),
         )
+        // "On this day": birthdays and remembrance days that fall today, worked out off the main thread. Tap to go to the first one.
+        val onThisDay by androidx.compose.runtime.produceState(emptyList<com.inamibrahim.kinhold.model.UpcomingDate>(), family) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.inamibrahim.kinhold.model.Upcoming.compute(family, emptyList(), java.time.LocalDate.now(), withinDays = 0, limit = 6)
+            }
+        }
+        if (onThisDay.isNotEmpty() && !searching) {
+            val shown = onThisDay.take(2).joinToString(", ") { d ->
+                when (d.kind) {
+                    com.inamibrahim.kinhold.model.UpcomingKind.Birthday -> "${d.person.name}'s birthday" + (d.years?.let { " ($it)" } ?: "")
+                    com.inamibrahim.kinhold.model.UpcomingKind.Remembrance -> "remembering ${d.person.name}"
+                    com.inamibrahim.kinhold.model.UpcomingKind.Anniversary -> "${d.person.name}'s anniversary"
+                }
+            }
+            val more = onThisDay.size - 2
+            Text(
+                "Today: $shown" + if (more > 0) " and $more more" else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Palette.Accent,
+                maxLines = 2,
+                modifier = Modifier
+                    .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onFocus(onThisDay.first().person.id) },
+            )
+        }
     }
     val banner: @Composable () -> Unit = {
         androidx.compose.animation.AnimatedVisibility(sampleLoaded && !searching) {
@@ -212,7 +241,11 @@ fun TreeScreen(
         }
     }
     val card: @Composable () -> Unit = {
-        androidx.compose.animation.AnimatedVisibility(!searching) {
+        androidx.compose.animation.AnimatedVisibility(
+            !searching,
+            enter = androidx.compose.animation.expandVertically(cardSize(), Alignment.Bottom) + androidx.compose.animation.fadeIn(cardFade()),
+            exit = androidx.compose.animation.shrinkVertically(cardSize(), Alignment.Bottom) + androidx.compose.animation.fadeOut(cardFade()),
+        ) {
             FocusCard(
                 family = family,
                 person = focus,
@@ -223,9 +256,10 @@ fun TreeScreen(
                 onFocus = onFocus,
                 collapsed = cardCollapsed,
                 onToggle = onToggleCard,
-                compact = landscape,
+                compact = compactUi,
+                singleRow = landscape,
                 modifier = Modifier
-                    .padding(start = 20.dp, end = 20.dp, top = if (landscape) 8.dp else 12.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = if (compactUi) 8.dp else 12.dp)
                     .fillMaxWidth(),
             )
         }
@@ -237,7 +271,7 @@ fun TreeScreen(
                 NavItem("Find", Icons.Filled.Search, searching) { searching = !searching },
                 NavItem("More", Icons.Filled.Menu, false, onMore),
             ),
-            navModifier.padding(horizontal = 20.dp, vertical = if (landscape) 6.dp else 12.dp).fillMaxWidth(),
+            navModifier.padding(horizontal = 20.dp, vertical = if (compactUi) 6.dp else 12.dp).fillMaxWidth(),
         )
     }
 
@@ -270,6 +304,10 @@ fun TreeScreen(
     }
 }
 
+/** One duration and easing for everything that moves when the card folds or the search opens, so nothing runs ahead of the rest. */
+private fun <T> cardSize() = androidx.compose.animation.core.tween<T>(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+private fun <T> cardFade() = androidx.compose.animation.core.tween<T>(220, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
+
 /** Who the tree is centred on, how many relatives they have, and the buttons to change them or add a relative. */
 @Composable
 private fun FocusCard(
@@ -284,6 +322,7 @@ private fun FocusCard(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    singleRow: Boolean = false,
 ) {
     val parents = family.parentsOf(person.id).size
     val spouses = family.spousesOf(person.id).size
@@ -291,19 +330,20 @@ private fun FocusCard(
     AppCard(modifier) {
         Column(Modifier.padding(if (compact) 12.dp else 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 44.dp else if (compact) 52.dp else 64.dp, androidx.compose.animation.core.tween(280), label = "avatar").value, ring = 3.dp)
+                Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 44.dp else if (compact) 52.dp else 64.dp, cardSize(), label = "avatar").value, ring = 3.dp)
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text(person.name, style = MaterialTheme.typography.titleLarge, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         if (person.isMe) {
                             Text("YOU", style = MaterialTheme.typography.labelMedium, color = Palette.OnAccent, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50)).background(Palette.Accent).padding(horizontal = 8.dp, vertical = 2.dp))
                         }
                     }
                     val age = person.ageText(java.time.LocalDate.now())
                     if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber, modifier = Modifier.padding(top = 2.dp))
-                    if (person.lifeDates().isNotEmpty()) {
+                    val lifeLine = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.lifeLine(person.birthDate, person.deathDate) else person.lifeDates()
+                    if (lifeLine.isNotEmpty()) {
                         Text(
-                            person.lifeDates(),
+                            lifeLine,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Palette.TextMuted,
                             modifier = Modifier.padding(top = 2.dp),
@@ -320,11 +360,17 @@ private fun FocusCard(
                     Modifier.size(40.dp).clip(CircleShape).background(Palette.SurfaceHigh).clickable(onClick = onToggle),
                     contentAlignment = Alignment.Center,
                 ) {
-                    val turn by androidx.compose.animation.core.animateFloatAsState(if (collapsed) 180f else 0f, androidx.compose.animation.core.tween(280), label = "chevron")
+                    val turn by androidx.compose.animation.core.animateFloatAsState(if (collapsed) 180f else 0f, cardSize(), label = "chevron")
                     androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowDown, if (collapsed) "Show actions" else "Hide actions", tint = Palette.Text, modifier = Modifier.rotate(turn))
                 }
             }
-            androidx.compose.animation.AnimatedVisibility(!collapsed) {
+            // The actions fold up and down only vertically (the default also grows sideways from a corner, which looked cluttered),
+            // with the same duration and easing as the avatar and the chevron so the whole card moves as one.
+            androidx.compose.animation.AnimatedVisibility(
+                !collapsed,
+                enter = androidx.compose.animation.expandVertically(cardSize(), Alignment.Top) + androidx.compose.animation.fadeIn(cardFade()),
+                exit = androidx.compose.animation.shrinkVertically(cardSize(), Alignment.Top) + androidx.compose.animation.fadeOut(cardFade()),
+            ) {
             Column {
             // Siblings, half-siblings and step relatives, worked out from the links. Tapping one moves the focus to them.
             // At most four are shown here (the rest are on the Details page), wrapping instead of scrolling sideways.
@@ -375,7 +421,7 @@ private fun FocusCard(
                 ActionTile("Spouse", Icons.Filled.Favorite, { onAdd(Relation.SpouseOf(person.id)) }, Modifier.weight(1f), tone = Tones.Rose, compact = compact)
                 ActionTile("Child", FamilyIcons.Child, onAddChild, Modifier.weight(1f), tone = Tones.Mint, compact = compact)
             }
-            if (compact) {
+            if (singleRow) {
                 // Landscape is short: all the tiles share one row, so the card needs no scrolling.
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { first(); second() }
             } else {

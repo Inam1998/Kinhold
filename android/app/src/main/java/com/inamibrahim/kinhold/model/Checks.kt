@@ -144,3 +144,25 @@ object TreeChecks {
         return s to why.joinToString(", ")
     }
 }
+
+/** A partner who is a parent of some of a person's children but is not recorded as a parent of others: [children] have only [parent] recorded. */
+class MissingParent(val parent: Person, val partner: Person, val children: List<Person>)
+
+/**
+ * Finds children recorded with one parent where that parent has exactly one partner who is the recorded parent of
+ * another of the same parent's children. That is almost always a missing link (the partner was added as a spouse, not as a parent),
+ * and it makes the children look like half-siblings. Each result can be repaired by linking the partner as a birth parent of every child listed.
+ */
+fun TreeChecks.missingParents(family: Family, limit: Int = 100): List<MissingParent> {
+    val out = ArrayList<MissingParent>()
+    for (parent in family.people) {
+        val spouses = family.spousesOf(parent.id)
+        if (spouses.size != 1) continue
+        val partner = spouses[0]
+        val kids = family.childrenOf(parent.id)
+        if (kids.none { k -> family.parentsOf(k.id).any { it.id == partner.id } }) continue
+        val lone = kids.filter { k -> family.parentsOf(k.id).let { ps -> ps.size == 1 && family.kindOf(k.id, parent.id).isLineage } }
+        if (lone.isNotEmpty() && out.size < limit) out += MissingParent(parent, partner, lone)
+    }
+    return out
+}

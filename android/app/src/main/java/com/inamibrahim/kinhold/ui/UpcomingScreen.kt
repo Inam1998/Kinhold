@@ -123,9 +123,9 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                         is UpItem.Row -> {
                             val d = item.date
                             val (icon, tone) = when (d.kind) {
-                                UpcomingKind.Birthday -> Icons.Filled.Star to Tones.Amber
-                                UpcomingKind.Remembrance -> Icons.Filled.Info to Tones.Violet
-                                UpcomingKind.Anniversary -> Icons.Filled.Favorite to Tones.Rose
+                                UpcomingKind.Birthday -> AppIcons.Cake to Tones.Amber
+                                UpcomingKind.Remembrance -> AppIcons.Candle to Tones.Violet
+                                UpcomingKind.Anniversary -> AppIcons.Rings to Tones.Rose
                             }
                             AppCard(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable { onOpen(d.person.id) }) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

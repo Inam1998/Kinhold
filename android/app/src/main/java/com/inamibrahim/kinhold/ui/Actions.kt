@@ -45,6 +45,12 @@ object Actions {
         return GeoPin.parse(text)
     }
 
+    /** The text in the clipboard, or null. Read only when the person asks for it or comes back from maps. */
+    fun clipboardText(context: Context): String? {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return null
+        return cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+    }
+
     /** Shows the saved pin, or else searches the typed address, in the phone's maps app. */
     fun map(context: Context, label: String, address: String, pin: GeoPin?) {
         val uri = when {
@@ -53,6 +59,43 @@ object Actions {
             else -> Uri.parse("geo:0,0")
         }
         launch(context, Intent(Intent.ACTION_VIEW, uri), "No maps app found.")
+    }
+}
+
+/** What reading a place gave: the pin, or a plain sentence saying why not. */
+class PinResult(val pin: GeoPin?, val message: String?)
+
+/**
+ * Turns what a person pasted into a map pin without any map service key and without the app having internet permission: coordinates
+ * and long Google Maps links are read directly, a full Plus Code is decoded, and a short Plus Code is placed near a known point
+ * (a pin already saved in the tree, or a place the phone geocoder finds for the town written after the code or for the address).
+ * The geocoder belongs to the phone (Google Play services); it needs the internet at that moment and may be missing on some phones.
+ */
+object PinFinder {
+    /** The phone geocoder: the first point for a place name or address, or null (no geocoder, no connection, nothing found). */
+    suspend fun geocode(context: Context, query: String): GeoPin? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (query.isBlank() || !android.location.Geocoder.isPresent()) return@withContext null
+        runCatching {
+            @Suppress("DEPRECATION")
+            android.location.Geocoder(context, java.util.Locale.getDefault()).getFromLocationName(query.trim(), 1)?.firstOrNull()
+                ?.let { GeoPin(it.latitude, it.longitude) }
+        }.getOrNull()?.takeIf { it.isValid }
+    }
+
+    suspend fun resolve(context: Context, text: String, address: String, reference: GeoPin?): PinResult {
+        GeoPin.parse(text)?.let { return PinResult(it, null) }
+        val code = com.inamibrahim.kinhold.model.PlusCode.find(text)
+        if (code != null) {
+            if (!code.isShort) {
+                com.inamibrahim.kinhold.model.PlusCode.decode(code.code)?.let { return PinResult(it, null) }
+            } else {
+                // A short code needs a point within about 50 km: a saved pin first, then the town written after the code, then the address.
+                val refs = listOf(reference, if (code.locality.isNotBlank()) geocode(context, code.locality) else null, if (address.isNotBlank()) geocode(context, address) else null)
+                for (r in refs.filterNotNull()) com.inamibrahim.kinhold.model.PlusCode.recover(code.code, r)?.let { return PinResult(it, null) }
+                return PinResult(null, "That is a short Plus Code and Kinhold could not tell where it is. Type the town in the Address box and tap Find from address first, or copy the full code.")
+            }
+        }
+        return PinResult(null, null)
     }
 }
 

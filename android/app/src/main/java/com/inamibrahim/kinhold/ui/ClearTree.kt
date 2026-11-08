@@ -24,7 +24,7 @@ fun ClearTreeDialog(people: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
             )
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogButtons {
                 DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
                 DialogButton("Delete everything", onConfirm, kind = ButtonKind.Danger)
             }
@@ -48,7 +48,7 @@ fun ClearSampleDialog(people: Int, onConfirm: () -> Unit, onDismiss: () -> Unit)
             )
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogButtons {
                 DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
                 DialogButton("Clear it", onConfirm, kind = ButtonKind.Danger)
             }
@@ -72,7 +72,7 @@ fun KeepSampleDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             )
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogButtons {
                 DialogButton("Cancel", onDismiss, kind = ButtonKind.Neutral)
                 DialogButton("Keep them", onConfirm, kind = ButtonKind.Primary)
             }

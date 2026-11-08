@@ -69,6 +69,10 @@ import com.inamibrahim.kinhold.model.PersonDraft
 import com.inamibrahim.kinhold.model.Event
 import com.inamibrahim.kinhold.model.Family
 import com.inamibrahim.kinhold.model.GeoPin
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
+import kotlinx.coroutines.launch
 import com.inamibrahim.kinhold.model.LinkKind
 import com.inamibrahim.kinhold.model.Limits
 import com.inamibrahim.kinhold.model.EventJson
@@ -91,11 +95,14 @@ fun PersonFormScreen(
     onDelete: (() -> Unit)?,
     onCancel: () -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
+    referencePin: GeoPin? = null,
 ) {
     // A picked photo is only prepared here; it is stored when Save is pressed. It is not kept across rotation.
     var photo by remember { mutableStateOf<PhotoChange>(PhotoChange.Keep) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var preparing by remember { mutableStateOf(false) }
+    // A new picture is shown in a crop step first; nothing is kept until Use this is pressed.
+    var cropping by remember { mutableStateOf<com.inamibrahim.kinhold.data.PreparedPhoto?>(null) }
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -103,7 +110,7 @@ fun PersonFormScreen(
             photoError = null
             onPreparePhoto(uri) { result ->
                 preparing = false
-                result.fold({ photo = PhotoChange.Set(it) }, { photoError = it.message ?: "That picture could not be used." })
+                result.fold({ cropping = it }, { photoError = it.message ?: "That picture could not be used." })
             }
         }
     }
@@ -115,7 +122,7 @@ fun PersonFormScreen(
             photoError = null
             onPreparePhoto(pending.uri) { result ->
                 preparing = false
-                result.fold({ photo = PhotoChange.Set(it) }, { photoError = it.message ?: "That picture could not be used." })
+                result.fold({ cropping = it }, { photoError = it.message ?: "That picture could not be used." })
                 CameraShot.clean(appContext)
             }
         } else {
@@ -162,14 +169,37 @@ fun PersonFormScreen(
     var offered by remember { mutableStateOf<GeoPin?>(null) }
     var pasteNotice by remember { mutableStateOf(false) }
     var nothingCopied by remember { mutableStateOf(false) }
+    var pinMessage by remember { mutableStateOf<String?>(null) }
+    var finding by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Works out a pin from clipboard text (coordinates, a Maps link or a Plus Code); with [offer] it is shown for approval instead of being set.
+    fun fromClipboard(offer: Boolean) {
+        scope.launch {
+            finding = true
+            val text = Actions.clipboardText(context).orEmpty()
+            val r = PinFinder.resolve(context, text, address, referencePin)
+            finding = false
+            pinMessage = r.message
+            if (r.pin != null) {
+                if (offer) offered = r.pin else pinText = r.pin.text()
+                pasteNotice = false
+                nothingCopied = false
+            } else if (offer) nothingCopied = r.message == null else pasteNotice = r.message == null
+        }
+    }
+    // A Plus Code typed or pasted into the pin box is turned into coordinates.
+    androidx.compose.runtime.LaunchedEffect(pinText) {
+        if (pinText.isNotBlank() && GeoPin.parse(pinText) == null && com.inamibrahim.kinhold.model.PlusCode.find(pinText) != null) {
+            val r = PinFinder.resolve(context, pinText, address, referencePin)
+            if (r.pin != null) { pinText = r.pin.text(); pinMessage = null } else pinMessage = r.message
+        }
+    }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && waitingForMaps) {
                 waitingForMaps = false
-                offered = Actions.clipboardPin(context)
-                // Coming back with nothing copied: say what is still to do instead of showing nothing.
-                nothingCopied = offered == null
+                fromClipboard(offer = true)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -242,7 +272,12 @@ fun PersonFormScreen(
                         .padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    ScreenHeader(if (isEditing) "Person" else "New person", title, Modifier.padding(top = 12.dp, bottom = 6.dp))
+                    ScreenHeader(
+                        if (isEditing) "Person" else "New person", title, Modifier.padding(top = 12.dp, bottom = 6.dp),
+                        trailing = {
+                            DialogButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) }, kind = ButtonKind.Primary, enabled = problem == null && !preparing, icon = Icons.Filled.Check)
+                        },
+                    )
 
                     FormCard("Who they are", Icons.Filled.Person, Tones.Violet) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,29 +288,29 @@ fun PersonFormScreen(
                                     if (person != null && person.hasPhoto) Avatar(person, 88.dp, ring = 3.dp) else AvatarPreview(null, sex, 88.dp, ring = 3.dp)
                             }
                             Column(Modifier.padding(start = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Pill(
-                                    if (hasPhoto) "Change photo" else "Add a photo",
-                                    selected = false,
-                                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                                )
-                                Pill("Take a photo", selected = false, onClick = { val p = CameraShot.prepare(appContext); shot = p; camera.launch(p.uri) })
-                                if (hasPhoto) Pill("Remove photo", selected = false, onClick = { photo = PhotoChange.Remove })
+                                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    IconAction(AppIcons.Gallery, if (hasPhoto) "Choose a different photo from the gallery" else "Choose a photo from the gallery", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                                    IconAction(AppIcons.Camera, "Take a photo with the camera", { val p = CameraShot.prepare(appContext); shot = p; camera.launch(p.uri) })
+                                    (photo as? PhotoChange.Set)?.let { set -> IconAction(AppIcons.Crop, "Move and zoom the photo", { cropping = set.photo }) }
+                                    if (hasPhoto) IconAction(Icons.Filled.Delete, "Remove the photo", { photo = PhotoChange.Remove }, danger = true)
+                                }
                             }
                         }
                         if (preparing) {
                             Text("Preparing the photo…", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
                         }
+                        cropping?.let { raw -> PhotoCropDialog(raw, { photo = PhotoChange.Set(it); cropping = null }, { cropping = null }) }
                         photoError?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
                         }
-                        Field("First names", given, { given = it }, Modifier.fillMaxWidth())
-                        Field("Surname", surname, { surname = it }, Modifier.fillMaxWidth())
+                        Field("First names", given, { given = it }, Modifier.fillMaxWidth(), placeholder = "e.g. Ahmad Ali")
+                        Field("Surname", surname, { surname = it }, Modifier.fillMaxWidth(), placeholder = "e.g. Khan")
                         Column {
                             Label("Sex", Modifier.padding(bottom = 8.dp))
                             EqualRow(3) {
-                                Pill("Male", sex == Sex.Male, { sex = Sex.Male }, Modifier.weight(1f))
-                                Pill("Female", sex == Sex.Female, { sex = Sex.Female }, Modifier.weight(1f))
-                                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown }, Modifier.weight(1f))
+                                Pill("Male", sex == Sex.Male, { sex = Sex.Male }, Modifier.weight(1f), icon = AppIcons.Male, small = true)
+                                Pill("Female", sex == Sex.Female, { sex = Sex.Female }, Modifier.weight(1f), icon = AppIcons.Female, small = true)
+                                Pill("Not stated", sex == Sex.Unknown, { sex = Sex.Unknown }, Modifier.weight(1f), icon = AppIcons.Unknown, small = true)
                             }
                         }
                     }
@@ -296,10 +331,10 @@ fun PersonFormScreen(
                     }
 
                     FormCard("Contact", Icons.Filled.Call, Tones.Mint) {
-                        Field("Phone number (with country code for WhatsApp, e.g. +92…)", phone, { phone = it }, Modifier.fillMaxWidth(), KeyboardType.Phone)
-                        Field("Email", email, { email = it }, Modifier.fillMaxWidth(), KeyboardType.Email)
-                        Field("Address", address, { address = it }, Modifier.fillMaxWidth(), singleLine = false)
-                        Field("Map pin (latitude, longitude, or a Google Maps link)", pinText, { pinText = it }, Modifier.fillMaxWidth(), KeyboardType.Uri)
+                        PhoneField(phone, { phone = it }, Modifier.fillMaxWidth())
+                        Field("Email", email, { email = it }, Modifier.fillMaxWidth(), KeyboardType.Email, placeholder = "name@example.com")
+                        Field("Address", address, { address = it }, Modifier.fillMaxWidth(), singleLine = false, placeholder = "House, street, city")
+                        Field("Map pin", pinText, { pinText = it }, Modifier.fillMaxWidth(), KeyboardType.Uri, placeholder = "31.5204, 74.3587 or a Plus Code")
                         offered?.let { found ->
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Tones.Mint.copy(alpha = 0.16f)).padding(14.dp),
@@ -326,21 +361,34 @@ fun PersonFormScreen(
                             )
                             DialogButton(
                                 "Paste",
-                                {
-                                    val found = Actions.clipboardPin(context)
-                                    nothingCopied = false
-                                    if (found != null) { pinText = found.text(); pasteNotice = false } else pasteNotice = true
-                                },
+                                { fromClipboard(offer = false) },
                                 Modifier.weight(1f),
                                 kind = ButtonKind.Neutral,
                                 icon = Icons.Filled.Edit,
                             )
                         }
+                        DialogButton(
+                            if (finding) "Looking…" else "Find from address",
+                            {
+                                scope.launch {
+                                    finding = true
+                                    pinMessage = null
+                                    val found = PinFinder.geocode(context, address)
+                                    finding = false
+                                    if (found != null) pinText = found.text() else pinMessage = if (address.isBlank()) "Type an address first." else "Your phone could not find that address (it needs the internet and a map service on the phone). Try adding the town, or use Choose on map."
+                                }
+                            },
+                            Modifier.fillMaxWidth(),
+                            kind = ButtonKind.Tonal,
+                            enabled = !finding,
+                            icon = Icons.Filled.Search,
+                        )
+                        pinMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger) }
                         if (pasteNotice) {
-                            Text("The clipboard holds no location. Copy coordinates or a full Google Maps link first.", style = MaterialTheme.typography.bodySmall, color = Palette.Danger)
+                            Text("The clipboard holds no location. Copy a Plus Code, coordinates or a full Google Maps link first.", style = MaterialTheme.typography.bodySmall, color = Palette.Danger)
                         }
                         if (nothingCopied) {
-                            Text("No location was copied. In your maps app press and hold the place, then tap the numbers that appear. Come back here and Kinhold offers them.", style = MaterialTheme.typography.bodySmall, color = Tones.Amber)
+                            Text("No location was copied. In your maps app press and hold the place, then tap the Plus Code under About (for example H88G+PF7) to copy it. Come back here and Kinhold offers it.", style = MaterialTheme.typography.bodySmall, color = Tones.Amber)
                         }
                         // The steps are shown only until a pin is set, so they do not crowd the card afterwards.
                         if (pin == null) {
@@ -349,7 +397,7 @@ fun PersonFormScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text("How to choose a place", style = MaterialTheme.typography.labelMedium, color = Palette.Text)
-                                for ((n, step) in listOf("Tap Choose on map. It opens your maps app, at the address if you typed one.", "Press and hold the place.", "Tap the numbers that appear. This copies them.", "Come back to Kinhold and tap Use it.").withIndex()) {
+                                for ((n, step) in listOf("Tap Choose on map. It opens your maps app, at the address if you typed one.", "Press and hold the place.", "Tap the Plus Code under About (like H88G+PF7 Lahore). This copies it.", "Come back to Kinhold and tap Use it. Or just type the address and tap Find from address.").withIndex()) {
                                     Text("${n + 1}.  $step", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                                 }
                             }
@@ -357,7 +405,7 @@ fun PersonFormScreen(
                     }
 
                     FormCard("Notes", Icons.Filled.Edit, Tones.Sky) {
-                        Field("Notes", notes, { notes = it }, Modifier.fillMaxWidth(), singleLine = false)
+                        Field("Notes", notes, { notes = it }, Modifier.fillMaxWidth(), singleLine = false, placeholder = "Anything worth remembering about them", labelHidden = true)
                     }
 
                     FormCard("Events", Icons.Filled.Star, Tones.Coral) {
@@ -375,18 +423,21 @@ fun PersonFormScreen(
                         FieldsEditor(details.fields, { setDetails(details.copy(fields = it)) })
                     }
 
-                    FormCard("Sources for this person", Icons.Filled.Lock, Tones.Rose) {
+                    FormCard("Sources for this person", androidx.compose.material.icons.Icons.AutoMirrored.Filled.List, Tones.Rose) {
                         SourcesEditor(details.sources, { setDetails(details.copy(sources = it)) })
                     }
 
                     if (problem != null) {
                         Text(problem, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
                     }
-                    PrimaryButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) }, Modifier.fillMaxWidth(), enabled = problem == null && !preparing)
-                    DialogButton("Cancel", onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
-                    if (onDelete != null) {
-                        DialogButton("Delete this person", { confirmDelete = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger, icon = Icons.Filled.Delete)
-                    }
+                    FormActions(
+                        "Save",
+                        { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) },
+                        problem == null && !preparing,
+                        onCancel,
+                        "Delete this person",
+                        if (onDelete != null) ({ confirmDelete = true }) else null,
+                    )
                     Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
                 }
             }
@@ -407,7 +458,7 @@ fun PersonFormScreen(
                 )
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Keep", { confirmDelete = false }, kind = ButtonKind.Neutral)
                     DialogButton("Delete", { confirmDelete = false; onDelete() }, kind = ButtonKind.Danger)
                 }
@@ -430,10 +481,14 @@ internal fun Field(
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
     singleLine: Boolean = true,
+    hidden: Boolean = false,
+    placeholder: String = "",
+    labelHidden: Boolean = false,
 ) {
     Column(modifier) {
-        Label(label, Modifier.padding(bottom = 6.dp))
+        if (!labelHidden) Label(label, Modifier.padding(bottom = 6.dp))
         BasicTextField(
+            visualTransformation = if (hidden) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             value = value,
             onValueChange = onChange,
             singleLine = singleLine,
@@ -453,7 +508,11 @@ internal fun Field(
                         .background(Palette.SurfaceHigh)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     contentAlignment = Alignment.CenterStart,
-                ) { inner() }
+                ) {
+                    // A hint in the empty box says what goes there, so a blank field is never a mystery.
+                    if (value.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = Palette.TextMuted.copy(alpha = 0.65f))
+                    inner()
+                }
             },
         )
     }

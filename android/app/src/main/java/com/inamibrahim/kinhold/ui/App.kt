@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
@@ -87,6 +88,9 @@ sealed interface Screen {
     /** Counts and records about the whole tree. */
     data object Stats : Screen
 
+    /** Hidden page of build facts, opened from Settings. */
+    data object Developer : Screen
+
     /** How two people are related (the two people can be changed on the screen). */
     data class Related(val first: Int, val second: Int) : Screen
 
@@ -119,6 +123,7 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Upcoming -> "upcoming"
             Screen.Pro -> "pro"
             Screen.Stats -> "stats"
+            Screen.Developer -> "developer"
             is Screen.Related -> "relation|${s.first}|${s.second}"
             is Screen.LockSetup -> "lock|${s.mode.name}"
             is Screen.Person -> "person|${s.id}"
@@ -148,6 +153,8 @@ private val ScreenSaver = Saver<Screen, String>(
             Screen.Upcoming
         } else if (text == "pro") {
             Screen.Pro
+        } else if (text == "developer") {
+            Screen.Developer
         } else if (text == "stats") {
             Screen.Stats
         } else if (text == "checks") {
@@ -225,7 +232,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
             title = { Text("Who are you?", color = Palette.Text) },
             text = { Text("The Me button needs to know which card is you. Choose yourself now, or later in More, then Settings, then Who are you.", color = Palette.TextMuted) },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Not now", { noMeNotice = false }, kind = ButtonKind.Neutral)
                     DialogButton("Choose now", { noMeNotice = false; choosingMe = true }, kind = ButtonKind.Primary)
                 }
@@ -270,14 +277,14 @@ private fun KinholdContent(vm: KinholdViewModel) {
             MoreScreen(
                 items = listOfNotNull(
                     // Buying is not built yet, so the Pro page is offered in debug builds only.
-                    if (AppSettings.debuggable) MoreItem(Icons.Filled.Star, Tones.Amber, "Kinhold Pro", "What Pro changes and what is always free") { screen = Screen.Pro } else null,
-                    MoreItem(Icons.Filled.Lock, Tones.Mint, "Backup and sharing", "$status. Back up, share with a relative, open a file, GEDCOM") { screen = Screen.Backup },
-                    MoreItem(Icons.Filled.Favorite, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = relatedStart(family, firstFocus, focusId) },
+                    if (AppSettings.debuggable) MoreItem(AppIcons.Crown, Tones.Amber, "Kinhold Pro", "What Pro changes and what is always free") { screen = Screen.Pro } else null,
+                    MoreItem(AppIcons.Backup, Tones.Mint, "Backup and sharing", "$status. Back up, share with a relative, open a file, GEDCOM") { screen = Screen.Backup },
+                    MoreItem(AppIcons.Network, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = relatedStart(family, firstFocus, focusId) },
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
-                    MoreItem(Icons.Filled.Info, Tones.Sky, "Tree statistics", "Counts, notable people, common surnames and places") { if (family.size > 0) screen = Screen.Stats },
+                    MoreItem(AppIcons.BarChart, Tones.Sky, "Tree statistics", "Counts, notable people, common surnames and places") { if (family.size > 0) screen = Screen.Stats },
                     MoreItem(Icons.Filled.Check, Tones.Teal, "Checks and duplicates", "Impossible dates, and people entered twice") { screen = Screen.Checks },
                     MoreItem(Icons.Filled.Settings, Tones.Sky, "Settings", "Who you are, app lock, theme and accent colour") { screen = Screen.Settings },
-                    MoreItem(Icons.Filled.Star, Tones.Coral, "Welcome tour", "The short introduction to Kinhold") { screen = Screen.Tour },
+                    MoreItem(Icons.Filled.PlayArrow, Tones.Coral, "Welcome tour", "The short introduction to Kinhold") { screen = Screen.Tour },
                     MoreItem(Icons.Filled.Info, Tones.Amber, "How Kinhold works", "A page for every feature, with its limits") { screen = Screen.Help },
                 ),
                 onBack = { screen = Screen.Tree },
@@ -375,7 +382,12 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Settings -> {
             BackHandler { screen = if (family.size == 0) Screen.Tree else Screen.More }
-            SettingsScreen(family, scroll = scrolls.scroll("settings"), onChooseMe = vm::setMe, onLock = { screen = Screen.LockSetup(it) }, onBack = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+            SettingsScreen(family, onDeveloper = { screen = Screen.Developer }, scroll = scrolls.scroll("settings"), onChooseMe = vm::setMe, onLock = { screen = Screen.LockSetup(it) }, onBack = { screen = if (family.size == 0) Screen.Tree else Screen.More })
+        }
+
+        target is Screen.Developer -> {
+            BackHandler { screen = Screen.Settings }
+            DeveloperScreen(family, onBack = { screen = Screen.Settings })
         }
 
         target is Screen.Backup -> {
@@ -428,6 +440,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     },
                     onCancel = { screen = backTo },
                     scroll = scrolls.scroll("form"),
+                    referencePin = remember(family) { family.people.firstNotNullOfOrNull { p -> if (p.lat != null && p.lng != null) com.inamibrahim.kinhold.model.GeoPin(p.lat, p.lng) else null } },
                 )
             }
         }
@@ -452,7 +465,9 @@ private fun KinholdContent(vm: KinholdViewModel) {
             },
             onAdd = {
                 undo = null
-                screen = Screen.Form(null, it)
+                // A sibling of someone whose one parent has several partners: ask which partner is the other parent.
+                if (it is Relation.ChildOf && it.otherParentId == null && it.parentId in family && family.spousesInOrder(it.parentId).size > 1) choosingParentFor = it.parentId
+                else screen = Screen.Form(null, it)
             },
             suggest = { suggestedDraft(family, it) },
             sampleLoaded = vm.sampleLoaded,
@@ -590,7 +605,7 @@ private fun Screen.depth(): Int = when (this) {
     Screen.Tree -> 0
     Screen.More, is Screen.Person -> 1
     is Screen.Share -> if (this.fromBackup) 3 else 2
-    Screen.Backup, Screen.Settings, Screen.Help, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour, Screen.Pro, Screen.Stats -> 2
+    Screen.Backup, Screen.Settings, Screen.Developer, Screen.Help, is Screen.Form, is Screen.Related, Screen.Upcoming, Screen.Checks, Screen.Tour, Screen.Pro, Screen.Stats -> 2
     Screen.Merge, is Screen.LockSetup -> 3
 }
 
@@ -626,6 +641,7 @@ private fun Screen.key(): String = when (this) {
     Screen.Upcoming -> "upcoming"
     Screen.Pro -> "pro"
     Screen.Stats -> "stats"
+    Screen.Developer -> "developer"
     Screen.Checks -> "checks"
     Screen.Tour -> "tour"
     is Screen.Person -> "person"

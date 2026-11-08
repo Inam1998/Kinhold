@@ -143,6 +143,15 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { onResult(runCatching { repo.linkExisting(personId, otherId, type, kind) }) }
     }
 
+    /** Links [parentId] as a birth parent of each child, one change at a time; reports how many were linked. */
+    fun addMissingParent(parentId: Int, childIds: List<Int>, onDone: (Int) -> Unit) {
+        viewModelScope.launch {
+            var n = 0
+            for (c in childIds) if (runCatching { repo.linkExisting(c, parentId, com.inamibrahim.kinhold.model.LinkType.Parent, com.inamibrahim.kinhold.model.LinkKind.Birth) }.isSuccess) n++
+            onDone(n)
+        }
+    }
+
     fun unlinkParent(child: Int, parent: Int, onDone: () -> Unit) {
         viewModelScope.launch {
             repo.unlinkParent(child, parent)
@@ -294,6 +303,45 @@ class KinholdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val result = runCatching { if (replace) repo.replaceAll(data) else repo.addAll(data) }
             hasSafetyCopy = repo.hasSafetyCopy()
+            onResult(result)
+        }
+    }
+
+    /** Writes the people chosen by [scope] around [rootId] as one web page (see [HtmlViewer]) to the place the person chose. [onResult] gets how many people are in it. */
+    fun exportWebPage(uri: Uri, rootId: Int, scope: ShareScope, onResult: (Result<Int>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val family = repo.family.value
+                require(rootId in family) { "That person is no longer in the tree." }
+                withContext(Dispatchers.IO) {
+                    val ids = com.inamibrahim.kinhold.model.Share.select(family, rootId, scope, LocalDate.now().year)
+                    val sub = com.inamibrahim.kinhold.model.Share.subFamily(family, ids, keepContact = false)
+                    val html = com.inamibrahim.kinhold.model.HtmlViewer.page(sub, "Family of ${family.person(rootId).name}", LocalDate.now().toString())
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Could not open the file to write to.")
+                    out.use { it.write(html.toByteArray(Charsets.UTF_8)) }
+                    ids.size
+                }
+            }
+            onResult(result)
+        }
+    }
+
+    /** Writes a family group sheet (a page per partner, with their children) for [personId] as a PDF to the place the person chose. */
+    fun exportFamilySheet(uri: Uri, personId: Int, onResult: (Result<Int>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val family = repo.family.value
+                require(personId in family) { "That person is no longer in the tree." }
+                val details = repo.details(personId)
+                withContext(Dispatchers.IO) {
+                    val person = family.person(personId)
+                    val families = FamilySheet.familiesOf(family, person, details)
+                    val bytes = FamilySheet.pdf("Family group sheet: ${person.name}", families, TreeExport.typeface)
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Could not open the file to write to.")
+                    out.use { it.write(bytes) }
+                    families.size
+                }
+            }
             onResult(result)
         }
     }

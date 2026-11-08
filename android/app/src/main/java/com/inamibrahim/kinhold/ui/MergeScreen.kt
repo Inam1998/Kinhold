@@ -211,7 +211,7 @@ fun MergeScreen(vm: KinholdViewModel, session: MergeSession, onDone: () -> Unit)
                     Modifier.fillMaxWidth(),
                     enabled = !working,
                 )
-                Pill("Cancel", false, { vm.cancelMerge(); onDone() }, Modifier.fillMaxWidth())
+                DialogButton("Cancel", { vm.cancelMerge(); onDone() }, Modifier.fillMaxWidth(), kind = ButtonKind.Neutral)
             }
         }
     }
@@ -237,7 +237,7 @@ private fun DoneCard(vm: KinholdViewModel, r: MergeResult, onDone: () -> Unit) {
                 }
             }
         }
-        if (!undone) Pill("Undo this", false, { vm.undoRestore { undone = it.isSuccess } }, Modifier.fillMaxWidth().padding(top = 12.dp))
+        if (!undone) DialogButton("Undo this", { vm.undoRestore { undone = it.isSuccess } }, Modifier.fillMaxWidth().padding(top = 12.dp), kind = ButtonKind.Neutral)
         PrimaryButton("Done", onDone, Modifier.fillMaxWidth().padding(top = 12.dp))
     }
 }

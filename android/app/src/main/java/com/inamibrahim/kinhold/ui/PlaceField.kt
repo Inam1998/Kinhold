@@ -38,10 +38,10 @@ fun ProvidePlaces(family: Family, content: @Composable () -> Unit) {
 
 /** A text box for a place. While something is typed, places already used in the tree that match it are offered below; tapping one fills it in. */
 @Composable
-fun PlaceField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+fun PlaceField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String = "City, country") {
     val book = LocalPlaces.current
     Column(modifier) {
-        Field(label, value, onChange, Modifier.fillMaxWidth())
+        Field(label, value, onChange, Modifier.fillMaxWidth(), placeholder = placeholder)
         val suggestions = remember(book, value) { book.suggest(value) }
         if (suggestions.isNotEmpty()) {
             FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

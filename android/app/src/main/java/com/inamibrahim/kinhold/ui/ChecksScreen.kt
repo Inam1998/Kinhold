@@ -38,6 +38,7 @@ import com.inamibrahim.kinhold.model.Finding
 import com.inamibrahim.kinhold.model.MarriageDate
 import com.inamibrahim.kinhold.model.Person
 import com.inamibrahim.kinhold.model.TreeChecks
+import com.inamibrahim.kinhold.model.missingParents
 import com.inamibrahim.kinhold.model.TreeGroup
 import com.inamibrahim.kinhold.model.TreeGroups
 import androidx.compose.foundation.layout.height
@@ -51,7 +52,7 @@ import java.time.LocalDate
 /** How many separate groups are listed; the rest are counted. A few hundred cards would be no use to anyone, and slow to build. */
 private const val GROUPS_SHOWN = 30
 
-private class CheckResult(val findings: List<Finding>, val duplicates: List<DuplicatePair>, val groups: List<TreeGroup>)
+private class CheckResult(val findings: List<Finding>, val duplicates: List<DuplicatePair>, val groups: List<TreeGroup>, val missing: List<com.inamibrahim.kinhold.model.MissingParent> = emptyList())
 
 /** Things in the tree that look wrong, and people who may be entered twice, with a way to join them. Nothing changes without a tap and a confirmation. */
 @Composable
@@ -61,7 +62,7 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
             // The bar stays up for at least a moment, so a small tree does not make it flash by.
             kotlinx.coroutines.coroutineScope {
                 val minimum = async { delay(600) }
-                value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family), TreeGroups.of(family)) }
+                value = withContext(Dispatchers.Default) { CheckResult(TreeChecks.run(family, marriages, LocalDate.now().year), TreeChecks.duplicates(family), TreeGroups.of(family), TreeChecks.missingParents(family)) }
                 minimum.await()
             }
         }
@@ -80,6 +81,19 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                 if (r == null) {
                     item { CheckingCard(family.size) }
                 } else {
+                    if (r.missing.isNotEmpty()) {
+                        item { SectionTitle("Missing parent links", Tones.Rose, Icons.Filled.Info) }
+                        items(r.missing, key = { "m${it.parent.id}-${it.partner.id}" }) { m ->
+                            AppCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val names = m.children.take(4).joinToString(", ") { it.name } + if (m.children.size > 4) " and ${m.children.size - 4} more" else ""
+                                    Text("${m.partner.name} is the partner of ${m.parent.name} and the parent of some of their children, but not recorded as a parent of $names.", style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+                                    Text("Until this is fixed they show as half-siblings and the tree lines split. Linking adds ${m.partner.name} as a birth parent of ${if (m.children.size == 1) "this child" else "all ${m.children.size}"}; Unlink on a Details page reverses it.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                                    DialogButton("Add ${m.partner.name} as parent", { vm.addMissingParent(m.partner.id, m.children.map { it.id }) { n -> notice = "Linked ${m.partner.name} as a parent of $n ${if (n == 1) "person" else "people"}." } }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary, icon = Icons.Filled.Check)
+                                }
+                            }
+                        }
+                    }
                     item { SectionTitle("Possible duplicates", Tones.Violet, Icons.Filled.Person) }
                     if (dups.isEmpty()) item { Quiet("No one looks entered twice.") }
                     items(dups, key = { "d${it.a.id}-${it.b.id}" }) { d ->
@@ -152,7 +166,7 @@ fun ChecksScreen(vm: KinholdViewModel, family: Family, marriages: List<MarriageD
                 )
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Cancel", { joining = null }, kind = ButtonKind.Neutral)
                     DialogButton(
                         "Join them",

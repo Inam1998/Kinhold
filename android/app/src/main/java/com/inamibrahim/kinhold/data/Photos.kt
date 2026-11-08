@@ -56,6 +56,25 @@ object PhotoCodec {
         return finish(main)
     }
 
+    /**
+     * The square the person chose in the crop step: [left], [top] and [side] are in pixels of the picture in [mainJpeg].
+     * The result is a square picture of at most [MAIN_LONG_SIDE] pixels and its thumbnail, so the face sits in the circle the same way everywhere.
+     */
+    fun cropped(mainJpeg: ByteArray, left: Float, top: Float, side: Float): PreparedPhoto {
+        val source = BitmapFactory.decodeByteArray(mainJpeg, 0, mainJpeg.size) ?: throw IOException("A picture could not be read.")
+        val s = side.coerceIn(1f, min(source.width, source.height).toFloat())
+        val l = left.coerceIn(0f, source.width - s)
+        val t = top.coerceIn(0f, source.height - s)
+        val out = min(MAIN_LONG_SIDE, s.toInt().coerceAtLeast(1))
+        val target = Bitmap.createBitmap(out, out, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(target)
+        canvas.drawColor(Color.WHITE)
+        val matrix = Matrix().apply { postTranslate(-l, -t); postScale(out / s, out / s) }
+        canvas.drawBitmap(source, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
+        source.recycle()
+        return finish(target)
+    }
+
     /** The square thumbnail for a stored photo, made again when a backup is restored. */
     fun thumbOf(mainJpeg: ByteArray): ByteArray {
         val bitmap = BitmapFactory.decodeByteArray(mainJpeg, 0, mainJpeg.size) ?: throw IOException("A stored photo could not be read.")

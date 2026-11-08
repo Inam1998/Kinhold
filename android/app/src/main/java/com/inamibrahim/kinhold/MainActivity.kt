@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppSettings.load(this)
+        com.inamibrahim.kinhold.data.TreeExport.typeface = androidx.core.content.res.ResourcesCompat.getFont(this, R.font.inter) ?: android.graphics.Typeface.DEFAULT
         AppLock.load(this)
         // Files made for the share sheet in an earlier run are removed, so a copy of the tree never lingers in the cache.
         com.inamibrahim.kinhold.ui.SendFile.clean(this, 30L * 60_000L)

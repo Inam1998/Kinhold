@@ -35,6 +35,35 @@ object HijriDates {
         return "$hd ${MONTH_NAMES[hm - 1]} $hy AH"
     }
 
+    /** The Hijri dates of someone's life for a card: "b. 3 Rajab 1357 AH – d. ...", only for the parts that are full dates; null when neither is. */
+    fun lifeText(birth: PartialDate, death: PartialDate): String? {
+        val b = describe(birth)
+        val d = describe(death)
+        return when {
+            b != null && d != null -> "$b – $d"
+            b != null -> "b. $b"
+            d != null -> "d. $d"
+            else -> null
+        }
+    }
+
+    /** A life as one line with each full date followed by its Hijri date: "b. 24 Feb 1998 (27 Shawwal 1418 AH)". Dates that cannot be converted stay as they are. */
+    fun lifeLine(birth: PartialDate, death: PartialDate): String {
+        fun part(d: PartialDate): String {
+            val g = d.text()
+            val h = describe(d)
+            return if (g.isNotEmpty() && h != null) "$g ($h)" else g
+        }
+        val b = part(birth)
+        val d = part(death)
+        return when {
+            b.isNotEmpty() && d.isNotEmpty() -> "$b – $d"
+            b.isNotEmpty() -> "b. $b"
+            d.isNotEmpty() -> "d. $d"
+            else -> ""
+        }
+    }
+
     /** A Hijri date as the [PartialDate] it falls on in the Gregorian calendar, or null. */
     fun partialFromHijri(year: Int, month: Int, day: Int): PartialDate? =
         toGregorian(year, month, day)?.let { PartialDate(it.year, it.monthValue, it.dayOfMonth) }

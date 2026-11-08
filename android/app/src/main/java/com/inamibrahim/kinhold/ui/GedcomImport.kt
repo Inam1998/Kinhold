@@ -71,7 +71,7 @@ fun rememberGedcomImporter(
                 }
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     if (currentPeople > 0) DialogButton("Add", { finish(replace = false) }, kind = ButtonKind.Tonal)
                     DialogButton(if (currentPeople > 0) "Replace" else "Import", { finish(replace = true) }, kind = ButtonKind.Primary)
                 }

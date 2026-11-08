@@ -15,7 +15,7 @@ object AppSettings {
     private const val KEY_ACCENT = "accent"
 
     /** Whether the Hijri equivalent is shown beside full dates. */
-    var showHijri by mutableStateOf(false)
+    var showHijri by mutableStateOf(true)
         private set
 
     fun chooseShowHijri(value: Boolean) {
@@ -48,7 +48,7 @@ object AppSettings {
         context = appContext.applicationContext
         val prefs = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         mode = ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) } ?: ThemeMode.Dark
-        showHijri = prefs.getBoolean("show_hijri", false)
+        showHijri = prefs.getBoolean("show_hijri", true)
         debuggable = (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         proUnlocked = debuggable && prefs.getBoolean("pro_unlocked", false)
         Palette.accent = AccentChoice.entries.firstOrNull { it.name == prefs.getString(KEY_ACCENT, null) } ?: AccentChoice.Green

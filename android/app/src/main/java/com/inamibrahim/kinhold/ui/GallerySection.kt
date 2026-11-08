@@ -89,7 +89,7 @@ fun GallerySection(vm: KinholdViewModel, personId: Int) {
                 else Text("Opening the photo…", color = Palette.TextMuted)
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Remove", { vm.removeGalleryPhoto(item.id) { refresh++ }; viewing = null }, kind = ButtonKind.Danger, icon = Icons.Filled.Delete)
                     DialogButton("Close", { viewing = null }, kind = ButtonKind.Neutral)
                 }

@@ -377,7 +377,7 @@ fun BackupScreen(vm: KinholdViewModel, family: com.inamibrahim.kinhold.model.Fam
                 )
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogButtons {
                     DialogButton("Cancel", { pending = null }, kind = ButtonKind.Neutral)
                     DialogButton(
                         "Replace",
