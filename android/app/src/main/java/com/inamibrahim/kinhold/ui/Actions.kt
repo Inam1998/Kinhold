@@ -29,9 +29,11 @@ object Actions {
         launch(context, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(PhoneNumber.dialable(phone)))), "No messages app found.")
 
     /** WhatsApp needs the number with its country code; returns false if it has none. */
-    fun whatsApp(context: Context, phone: String): Boolean {
+    fun whatsApp(context: Context, phone: String, message: String? = null): Boolean {
         val digits = PhoneNumber.whatsApp(phone) ?: return false
-        launch(context, Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits")), "No app found to open WhatsApp links.")
+        // A message only fills the box in WhatsApp; nothing is sent until the person presses send there.
+        val link = "https://wa.me/$digits" + if (message.isNullOrBlank()) "" else "?text=" + Uri.encode(message)
+        launch(context, Intent(Intent.ACTION_VIEW, Uri.parse(link)), "No app found to open WhatsApp links.")
         return true
     }
 

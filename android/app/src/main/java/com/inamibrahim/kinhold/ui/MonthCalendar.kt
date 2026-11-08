@@ -82,7 +82,11 @@ object HijriSystem : CalendarSystem {
  * chooses it. The grid has only as many week rows as the month needs, so there is no blank space below it.
  */
 @Composable
-fun MonthCalendar(system: CalendarSystem, selectedYear: Int?, selectedMonth: Int, selectedDay: Int, modifier: Modifier = Modifier, onPick: (year: Int, month: Int, day: Int) -> Unit) {
+fun MonthCalendar(system: CalendarSystem, selectedYear: Int?, selectedMonth: Int, selectedDay: Int, modifier: Modifier = Modifier,
+    onPickYear: (year: Int) -> Unit = {},
+    onPickMonth: (year: Int, month: Int) -> Unit = { _, _ -> },
+    onPick: (year: Int, month: Int, day: Int) -> Unit,
+) {
     val today = remember(system) { system.today() }
     val first = system.firstYear
     val last = system.lastYear
@@ -108,7 +112,7 @@ fun MonthCalendar(system: CalendarSystem, selectedYear: Int?, selectedMonth: Int
             "months" -> {
                 EqualRow(3) {
                     for (m in 1..12) {
-                        PickChip(system.monthName(m).take(3), viewMonth == m, true, modifier = Modifier.weight(1f)) { viewMonth = m; mode = "days" }
+                        PickChip(system.monthName(m).take(3), viewMonth == m, true, modifier = Modifier.weight(1f)) { viewMonth = m; mode = "days"; onPickMonth(viewYear, m) }
                     }
                 }
             }
@@ -124,7 +128,7 @@ fun MonthCalendar(system: CalendarSystem, selectedYear: Int?, selectedMonth: Int
                 ) {
                     items(last - first + 1, key = { it }) { i ->
                         val y = first + i
-                        PickChip("$y", viewYear == y, true, modifier = Modifier.fillMaxWidth()) { viewYear = y; mode = "months" }
+                        PickChip("$y", viewYear == y, true, modifier = Modifier.fillMaxWidth()) { viewYear = y; mode = "months"; onPickYear(y) }
                     }
                 }
             }

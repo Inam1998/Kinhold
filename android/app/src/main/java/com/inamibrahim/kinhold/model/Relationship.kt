@@ -6,7 +6,24 @@ package com.inamibrahim.kinhold.model
  * is the first person's uncle. [local] is null when there is no such word or the family tree does not say enough (for
  * example, the parent's sex is not recorded). [path] names the people between them, from first to second.
  */
-class Relationship(val english: String, val local: String?, val path: List<Person>, val blood: Boolean)
+class Relationship(
+    val english: String,
+    val local: String?,
+    val path: List<Person>,
+    val blood: Boolean,
+    val kin: Kin? = null,
+    /** Where the common ancestor sits in [path], and the others who are the same distance from both people (the other parent, the other grandparent), or -1 and none. */
+    val pivot: Int = -1,
+    val coPivots: List<Person> = emptyList(),
+) {
+    /** The people between the two, from first to second, each as a name; the common ancestor is shown with the others the same way ("Ibrahim / Atifa"). */
+    fun pathNames(): List<String> = path.mapIndexed { i, p ->
+        if (i == pivot && coPivots.isNotEmpty()) (listOf(p) + coPivots).joinToString(" / ") { it.name } else p.name
+    }
+
+    /** The family word in the chosen language: the Urdu and Punjabi words (which also cover in-laws), or the word for [kin] in another language; null when there is none. */
+    fun wordIn(language: KinLanguage): String? = if (language == KinLanguage.UrduPunjabi) local else kin?.let { KinWords.of(language, it) }
+}
 
 /** Works out relationships from the parent and spouse links. Pure Kotlin; the cost depends on the family's size around the two people, not the whole tree. */
 object Relationships {
@@ -41,7 +58,7 @@ object Relationships {
         bloodTerm(family, from, to)?.let { return it }
         // Through marriage: the second person is the first person's spouse, a spouse's relative, or a relative's spouse.
         if (family.spousesOf(from).any { it.id == to }) {
-            return Relationship(if (b.sex == Sex.Male) "Husband" else if (b.sex == Sex.Female) "Wife" else "Spouse", spouseWord(b.sex), listOf(a, b), false)
+            return Relationship(if (b.sex == Sex.Male) "Husband" else if (b.sex == Sex.Female) "Wife" else "Spouse", spouseWord(b.sex), listOf(a, b), false, if (b.sex == Sex.Male) Kin.Husband else if (b.sex == Sex.Female) Kin.Wife else null)
         }
         for (s in family.spousesOf(from)) {
             val r = bloodTerm(family, s.id, to) ?: continue
@@ -189,6 +206,53 @@ object Relationships {
                 }
             }
         }
-        return Relationship(english, local?.takeIf { it.isNotBlank() }, path, blood = true)
+        // The same relationship as a language-neutral key, for the family words of languages other than Urdu and Punjabi. It is only set
+        // when the tree says enough (the person's sex, and the sex of the parent the relationship runs through).
+        val male = sex == Sex.Male
+        val viaPath = down.getValue(common).viaPath
+        val childOfFromSex = viaPath.getOrNull(viaPath.size - 2)?.let(family::person)?.sex
+        val kin: Kin? = when {
+            sex == Sex.Unknown -> null
+            a == 0 && b == 1 -> if (male) Kin.Son else Kin.Daughter
+            a == 0 && b == 2 -> when (childOfFromSex) {
+                Sex.Male -> if (male) Kin.SonsSon else Kin.SonsDaughter
+                Sex.Female -> if (male) Kin.DaughtersSon else Kin.DaughtersDaughter
+                else -> null
+            }
+            b == 0 && a == 1 -> if (male) Kin.Father else Kin.Mother
+            b == 0 && a == 2 -> when (firstUp?.sex) {
+                Sex.Male -> if (male) Kin.PatGrandfather else Kin.PatGrandmother
+                Sex.Female -> if (male) Kin.MatGrandfather else Kin.MatGrandmother
+                else -> null
+            }
+            a == 1 && b == 1 -> if (male) Kin.Brother else Kin.Sister
+            a == 1 && b == 2 -> when (firstDown?.sex) {
+                Sex.Male -> if (male) Kin.BrothersSon else Kin.BrothersDaughter
+                Sex.Female -> if (male) Kin.SistersSon else Kin.SistersDaughter
+                else -> null
+            }
+            a == 2 && b == 1 -> when (firstUp?.sex) {
+                Sex.Male -> if (!male) Kin.FathersSister else {
+                    val mine = person.born
+                    val dads = firstUp?.born
+                    if (mine != null && dads != null && mine < dads) Kin.FathersElderBrother
+                    else if (mine != null && dads != null && mine > dads) Kin.FathersYoungerBrother
+                    else Kin.FathersBrother
+                }
+                Sex.Female -> if (male) Kin.MothersBrother else Kin.MothersSister
+                else -> null
+            }
+            a == 2 && b == 2 -> when (firstUp?.sex to firstDown?.sex) {
+                Sex.Male to Sex.Male -> if (male) Kin.CousinPatUncleSon else Kin.CousinPatUncleDaughter
+                Sex.Male to Sex.Female -> if (male) Kin.CousinPatAuntSon else Kin.CousinPatAuntDaughter
+                Sex.Female to Sex.Male -> if (male) Kin.CousinMatUncleSon else Kin.CousinMatUncleDaughter
+                Sex.Female to Sex.Female -> if (male) Kin.CousinMatAuntSon else Kin.CousinMatAuntDaughter
+                else -> null
+            }
+            else -> null
+        }
+        // Others at the same distance from both people: for brothers and sisters the other parent, for cousins the other grandparent.
+        val coPivots = up.filter { (id, r) -> id != common && r.steps == a && down[id]?.steps == b }.keys.map(family::person)
+        return Relationship(english, local?.takeIf { it.isNotBlank() }, path, blood = true, kin = kin, pivot = up.getValue(common).viaPath.size - 1, coPivots = coPivots)
     }
 }

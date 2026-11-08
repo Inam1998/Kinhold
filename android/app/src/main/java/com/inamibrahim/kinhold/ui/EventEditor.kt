@@ -157,9 +157,10 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
         ) {
             Column {
                 Text(chosen.text().ifEmpty { "No date" }, style = MaterialTheme.typography.titleLarge, color = Palette.Accent)
-                com.inamibrahim.kinhold.model.HijriDates.describe(chosen)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted) }
+                if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.describe(chosen)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted) }
             }
-            EqualRow(2) {
+            // The Hijri tab only exists when Hijri dates are switched on in Settings.
+            if (AppSettings.showHijri) EqualRow(2) {
                 PickChip("Gregorian", !hijriMode, true, modifier = Modifier.weight(1f)) { hijriMode = false }
                 PickChip("Hijri", hijriMode, true, modifier = Modifier.weight(1f)) {
                     if (!hijriMode) {
@@ -173,8 +174,18 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
                     }
                 }
             }
-            if (hijriMode) {
-                MonthCalendar(HijriSystem, hy, hMonth, hDay) { yy, mm, dd -> hYear = yy.toString(); hMonth = mm; hDay = dd }
+            if (hijriMode && AppSettings.showHijri) {
+                MonthCalendar(
+                    HijriSystem, hy, hMonth, hDay,
+                    onPickYear = { yy ->
+                        hYear = yy.toString()
+                        if (hMonth > 0 && hDay > 0) hDay = hDay.coerceAtMost(runCatching { HijriSystem.monthLength(yy, hMonth) }.getOrDefault(hDay))
+                    },
+                    onPickMonth = { yy, mm ->
+                        hYear = yy.toString(); hMonth = mm
+                        if (hDay > 0) hDay = hDay.coerceAtMost(runCatching { HijriSystem.monthLength(yy, mm) }.getOrDefault(hDay))
+                    },
+                ) { yy, mm, dd -> hYear = yy.toString(); hMonth = mm; hDay = dd }
                 Text(
                     when {
                         hijriConverted != null -> "That is ${hijriConverted.text()} in the Gregorian calendar (filled in for you)."
@@ -191,7 +202,18 @@ private fun DatePickerDialog(initial: PartialDate, onDone: (PartialDate) -> Unit
                     PickChip("Year only", precision == "year", true, modifier = Modifier.weight(1f)) { choosePrecision("year") }
                 }
                 if (precision == "day") {
-                    MonthCalendar(GregorianSystem, y, month, day) { yy, mm, dd -> year = yy.toString(); month = mm; day = dd }
+                    // Choosing a year (or a month) in the calendar changes the date at once and keeps the rest, so only the year can be changed.
+                    MonthCalendar(
+                        GregorianSystem, y, month, day,
+                        onPickYear = { yy ->
+                            year = yy.toString()
+                            if (month > 0 && day > 0) day = day.coerceAtMost(GregorianSystem.monthLength(yy, month))
+                        },
+                        onPickMonth = { yy, mm ->
+                            year = yy.toString(); month = mm
+                            if (day > 0) day = day.coerceAtMost(GregorianSystem.monthLength(yy, mm))
+                        },
+                    ) { yy, mm, dd -> year = yy.toString(); month = mm; day = dd }
                 } else {
                     // Years are chosen from a list that scrolls (newest first) and opens at the chosen year; typing one still works.
                     Field("Year", year, { year = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), KeyboardType.Number, placeholder = "Type a year, or choose below")

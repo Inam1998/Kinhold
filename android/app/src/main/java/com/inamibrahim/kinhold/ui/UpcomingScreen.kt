@@ -55,12 +55,23 @@ private fun title(d: UpcomingDate): String = when (d.kind) {
     UpcomingKind.Anniversary -> "${d.person.name} and ${d.other?.name ?: "spouse"}" + if (d.years != null && d.years > 0) ": ${d.years} years married" else ": anniversary"
 }
 
+/** Who to write to and what to say for a birthday or anniversary, or null when there is no phone number (or for a remembrance day). */
+private fun wishFor(d: UpcomingDate): Pair<String, String>? = when (d.kind) {
+    UpcomingKind.Birthday -> d.person.phone.takeIf { it.isNotBlank() }?.let { it to "Happy birthday, ${d.person.given.ifBlank { d.person.name }}!" }
+    UpcomingKind.Anniversary -> {
+        val who = listOfNotNull(d.person, d.other).firstOrNull { it.phone.isNotBlank() }
+        who?.let { it.phone to "Happy anniversary${if (d.other != null) ", ${d.person.given.ifBlank { d.person.name }} and ${d.other.given.ifBlank { d.other.name }}" else ""}!" }
+    }
+    UpcomingKind.Remembrance -> null
+}
+
 /** The birthdays, remembrance days and anniversaries in the next year, soonest first, with the optional morning reminder. */
 @Composable
 fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     var remind by remember { mutableStateOf(Reminders.enabled(context)) }
     var denied by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { Reminders.set(context, true); remind = true; denied = false } else denied = true
     }
@@ -107,6 +118,7 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                         }
                     }
                 }
+                notice?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.Danger, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) } }
                 if (items.isEmpty()) {
                     item {
                         Text(
@@ -127,6 +139,7 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                                 UpcomingKind.Remembrance -> AppIcons.Candle to Tones.Violet
                                 UpcomingKind.Anniversary -> AppIcons.Rings to Tones.Rose
                             }
+                            // Tapping the row opens the person's Details page, which has their contact buttons.
                             AppCard(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable { onOpen(d.person.id) }) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     ToneIcon(icon, tone, 44.dp)
@@ -136,6 +149,17 @@ fun UpcomingScreen(family: Family, marriages: List<MarriageDate>?, onOpen: (Int)
                                             "${PartialDate(d.on.year, d.on.monthValue, d.on.dayOfMonth).text().substringBeforeLast(' ')}  ·  ${Upcoming.describe(d.daysAway)}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Palette.TextMuted,
+                                        )
+                                    }
+                                    // Birthdays and anniversaries of someone with a phone number get a button that opens WhatsApp with the wish filled in
+                                    // (nothing is sent until the person presses send there). Remembrance days have none.
+                                    val wish = wishFor(d)
+                                    if (wish != null) {
+                                        IconAction(
+                                            AppIcons.WhatsApp,
+                                            "Send wishes on WhatsApp",
+                                            { notice = if (Actions.whatsApp(context, wish.first, wish.second)) null else "WhatsApp needs the number with its country code, such as +92 300 1234567. Open the person and edit the number to add it." },
+                                            Modifier.padding(start = 10.dp),
                                         )
                                     }
                                 }

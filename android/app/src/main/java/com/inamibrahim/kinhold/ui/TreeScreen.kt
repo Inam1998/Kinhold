@@ -3,6 +3,8 @@
 package com.inamibrahim.kinhold.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -329,7 +331,19 @@ private fun FocusCard(
     val children = family.childrenOf(person.id).size
     AppCard(modifier) {
         Column(Modifier.padding(if (compact) 12.dp else 20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Swiping down on the heading folds the card and swiping up opens it, the same as the chevron.
+            val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
+            Row(
+                Modifier.pointerInput(collapsed) {
+                    var total = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { total = 0f },
+                        onDragEnd = { if (total > swipeThreshold && !collapsed) onToggle() else if (total < -swipeThreshold && collapsed) onToggle() },
+                        onVerticalDrag = { _, dy -> total += dy },
+                    )
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Avatar(person, androidx.compose.animation.core.animateDpAsState(if (collapsed) 44.dp else if (compact) 52.dp else 64.dp, cardSize(), label = "avatar").value, ring = 3.dp)
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -342,7 +356,7 @@ private fun FocusCard(
                     if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber, modifier = Modifier.padding(top = 2.dp))
                     val lifeLine = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.lifeLine(person.birthDate, person.deathDate) else person.lifeDates()
                     if (lifeLine.isNotEmpty()) {
-                        Text(
+                        LifeText(
                             lifeLine,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Palette.TextMuted,

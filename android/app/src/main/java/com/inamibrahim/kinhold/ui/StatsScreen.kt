@@ -146,7 +146,7 @@ private fun PersonLine(label: String, name: String, detail: String, onOpen: (Int
             Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
             Text(listOf(name, detail).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
         }
-        DialogButton("Show", { onOpen(id) }, Modifier.padding(start = 10.dp), kind = ButtonKind.Tonal, icon = Icons.Filled.ArrowForward, small = true)
+        IconAction(AppIcons.Tree, "Show on the tree", { onOpen(id) }, Modifier.padding(start = 10.dp))
     }
 }
 

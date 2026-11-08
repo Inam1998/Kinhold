@@ -148,6 +148,13 @@ fun SettingsScreen(family: Family, onDeveloper: () -> Unit, scroll: androidx.com
                     Pill(if (AppSettings.showHijri) "Hijri dates: on" else "Hijri dates: off", AppSettings.showHijri, { AppSettings.chooseShowHijri(!AppSettings.showHijri) }, Modifier.fillMaxWidth())
                 }
             }
+            AppCard(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { ToneIcon(Icons.Filled.Favorite, Tones.Mint, 36.dp); Text("Family words", style = MaterialTheme.typography.titleMedium, color = Palette.Text, modifier = Modifier.padding(start = 12.dp)) }
+                    Text("Show the word your family uses (chacha, tío, amca ...) beside the English relationship, on the Relationship page and a person's Details.", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                    KinLanguageChoice()
+                }
+            }
             // Holding the version for ten seconds opens a hidden page, as in the author's other apps.
             val version = AppVersion.of(androidx.compose.ui.platform.LocalContext.current)
             Text(
@@ -203,7 +210,7 @@ fun PersonPickerDialog(family: Family, title: String, onPick: (Int) -> Unit, onD
         title = { Text(title, color = Palette.Text) },
         text = {
             Column {
-                Field("Search by name", query, { query = it }, Modifier.fillMaxWidth())
+                Field("Search by name", query, { query = it }, Modifier.fillMaxWidth(), placeholder = "Type a name", autoFocus = true)
                 if (results.isEmpty()) Text("No one to choose.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 12.dp, start = 4.dp))
                 LazyColumn(Modifier.heightIn(max = 320.dp).padding(top = 8.dp)) {
                     items(results, key = { it.id }) { p ->

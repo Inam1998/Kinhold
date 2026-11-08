@@ -258,11 +258,13 @@ fun FormActions(
     removeLabel: String?,
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    cancelLabel: String = "Cancel",
+    showSave: Boolean = true,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PrimaryButton(saveLabel, onSave, Modifier.fillMaxWidth(), enabled = saveEnabled, icon = androidx.compose.material.icons.Icons.Filled.Check)
+        if (showSave) PrimaryButton(saveLabel, onSave, Modifier.fillMaxWidth(), enabled = saveEnabled, icon = androidx.compose.material.icons.Icons.Filled.Check)
         EqualRow(2) {
-            DialogButton("Cancel", onCancel, Modifier.weight(1f), kind = ButtonKind.Neutral)
+            DialogButton(cancelLabel, onCancel, Modifier.weight(1f), kind = ButtonKind.Neutral)
             if (onRemove != null && removeLabel != null) DialogButton(removeLabel, onRemove, Modifier.weight(1f), kind = ButtonKind.Danger)
         }
     }

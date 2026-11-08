@@ -3,6 +3,7 @@ package com.inamibrahim.kinhold.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
@@ -16,6 +17,14 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.layout.layout
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -124,8 +133,11 @@ fun PersonPageScreen(
                 }
                 notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger, modifier = Modifier.padding(start = 24.dp, end = 20.dp, top = 6.dp)) }
             }
+            // Breathing room under the buttons, and a soft fade so scrolled content melts away instead of being cut off.
+            androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 10.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 state = listState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -135,12 +147,12 @@ fun PersonPageScreen(
                         Avatar(person, 72.dp, ring = 3.dp)
                         Column(Modifier.padding(start = 16.dp)) {
                             val dates = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.lifeLine(person.birthDate, person.deathDate) else person.lifeDates()
-                            if (dates.isNotEmpty()) Text(dates, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+                            if (dates.isNotEmpty()) LifeText(dates, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                             val age = person.ageText(java.time.LocalDate.now())
                             if (age.isNotEmpty()) Text(age, style = MaterialTheme.typography.bodyMedium, color = Tones.Amber)
                             val meId = remember(family) { family.people.firstOrNull { it.isMe }?.id }
                             val relation = remember(family, person.id) { if (meId != null && meId != person.id) com.inamibrahim.kinhold.model.Relationships.between(family, meId, person.id) else null }
-                            relation?.let { r -> Text("Your ${r.english.replaceFirstChar(Char::lowercase)}" + (r.local?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodyMedium, color = Tones.Rose) }
+                            relation?.let { r -> Text("Your ${r.english.replaceFirstChar(Char::lowercase)}" + (AppSettings.kinLanguage?.let { l -> r.wordIn(l)?.let { " · $it" } } ?: ""), style = MaterialTheme.typography.bodyMedium, color = Tones.Rose) }
                             Text(
                                 run {
                                     fun n(c: Int, one: String, many: String) = "$c ${if (c == 1) one else many}"
@@ -177,7 +189,7 @@ fun PersonPageScreen(
                         })
                     }
                 }
-                items(items) { item ->
+                itemsIndexed(items) { index, item ->
                     when (item) {
                         is PageItem.Heading -> DetailsHeading(item.text, Modifier.padding(top = 18.dp))
                         is PageItem.Line -> Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
@@ -187,7 +199,7 @@ fun PersonPageScreen(
                         is PageItem.Text -> Text(item.text, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(horizontal = 4.dp))
                         is PageItem.Note -> Text(item.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, modifier = Modifier.padding(horizontal = 4.dp))
                         is PageItem.EventItem -> EventRow(item.event, onClick = null)
-                        is PageItem.TimelineItem -> TimelineRow(item.entry)
+                        is PageItem.TimelineItem -> TimelineRow(item.entry, first = items.getOrNull(index - 1) !is PageItem.TimelineItem, last = items.getOrNull(index + 1) !is PageItem.TimelineItem)
                         is PageItem.SourceItem -> Column(Modifier.padding(horizontal = 4.dp)) {
                             Text(item.source.title.ifBlank { "Untitled source" }, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
                             if (item.source.citation.isNotBlank()) Text(item.source.citation, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
@@ -196,6 +208,12 @@ fun PersonPageScreen(
                     }
                 }
                 item { Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {} }
+            }
+            Box(
+                Modifier.fillMaxWidth().height(16.dp).align(Alignment.TopCenter).background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Palette.Background, androidx.compose.ui.graphics.Color.Transparent)),
+                ),
+            )
             }
         }
     }
@@ -317,7 +335,7 @@ fun PersonPageScreen(
 /** A link to remove: for a parent link [first] is the child and [second] the parent; for a partnership they are the two partners. */
 /** One line of the timeline: the date on the left, and what happened, where, how old they were and how many sources on the right. */
 @Composable
-private fun TimelineRow(entry: com.inamibrahim.kinhold.model.TimelineEntry) {
+private fun TimelineRow(entry: com.inamibrahim.kinhold.model.TimelineEntry, first: Boolean, last: Boolean) {
     val tone = when (entry.kind) {
         com.inamibrahim.kinhold.model.TimelineKind.Birth -> Tones.Mint
         com.inamibrahim.kinhold.model.TimelineKind.Death -> Tones.Violet
@@ -325,23 +343,77 @@ private fun TimelineRow(entry: com.inamibrahim.kinhold.model.TimelineEntry) {
         com.inamibrahim.kinhold.model.TimelineKind.Child -> Tones.Sky
         com.inamibrahim.kinhold.model.TimelineKind.Event -> Tones.Amber
     }
+    val icon = when (entry.kind) {
+        com.inamibrahim.kinhold.model.TimelineKind.Birth -> AppIcons.Cake
+        com.inamibrahim.kinhold.model.TimelineKind.Death -> AppIcons.Candle
+        com.inamibrahim.kinhold.model.TimelineKind.Marriage -> AppIcons.Rings
+        com.inamibrahim.kinhold.model.TimelineKind.Child -> FamilyIcons.Child
+        com.inamibrahim.kinhold.model.TimelineKind.Event -> Icons.Filled.Star
+    }
+    // Birth and death are the two ends of a life, so their markers are solid; everything between is a soft tint.
+    val solid = entry.kind == com.inamibrahim.kinhold.model.TimelineKind.Birth || entry.kind == com.inamibrahim.kinhold.model.TimelineKind.Death
     val hijri = if (AppSettings.showHijri) com.inamibrahim.kinhold.model.HijriDates.describe(entry.date)?.let { " ($it)" }.orEmpty() else ""
     val date = entry.date.text().ifEmpty { "No date" } + hijri
+    val railColor = Palette.TextMuted.copy(alpha = 0.28f)
+    val badge = 40.dp
+    // A rail runs down the left through every marker. It reaches over the gap between rows so the line is unbroken.
     Row(
-        Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(Palette.SurfaceHigh).padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier
+            .fillMaxWidth()
+            .androidx_drawRail(first, last, railColor, badge),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(Modifier.padding(top = 5.dp).size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(tone))
-        Column(Modifier.weight(1f)) {
-            Text(date, style = MaterialTheme.typography.labelMedium, color = tone)
+        Box(
+            Modifier
+                .size(badge)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Palette.Background)
+                .background(if (solid) tone else tone.copy(alpha = if (Palette.dark) 0.22f else 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = if (solid) Color(0xCC0B1220) else tone, modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.weight(1f).padding(bottom = if (last) 0.dp else 20.dp)) {
+            Text(date, style = MaterialTheme.typography.labelLarge, color = tone, modifier = Modifier.padding(top = 2.dp))
             Text(entry.title, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-            if (entry.place.isNotBlank()) Text(entry.place, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
-            if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            val extra = listOfNotNull(entry.age.ifEmpty { null }, if (entry.sources > 0) (if (entry.sources == 1) "1 source" else "${entry.sources} sources") else null).joinToString("  ·  ")
-            if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.labelMedium, color = Palette.Accent, modifier = Modifier.padding(top = 2.dp))
+            if (entry.place.isNotBlank()) {
+                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Palette.TextMuted, modifier = Modifier.size(14.dp))
+                    Text(entry.place, style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
+                }
+            }
+            if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            val chips = listOfNotNull(entry.age.ifEmpty { null }, if (entry.sources > 0) (if (entry.sources == 1) "1 source" else "${entry.sources} sources") else null)
+            if (chips.isNotEmpty()) {
+                androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (c in chips) {
+                        Text(
+                            c,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Palette.Accent,
+                            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50)).background(Palette.Accent.copy(alpha = 0.14f)).padding(horizontal = 10.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+/** Draws the timeline rail behind a row: from the top (unless first) to the marker, and from the marker down past the row's end (unless last). */
+private fun Modifier.androidx_drawRail(first: Boolean, last: Boolean, color: Color, badge: androidx.compose.ui.unit.Dp): Modifier = this
+    // The list leaves 8 dp between rows. Every row except the last reports itself 8 dp shorter, so the next row starts exactly where this
+    // one's content ends and the rail is one unbroken line.
+    .layout { measurable, constraints ->
+        val p = measurable.measure(constraints)
+        val gap = if (last) 0 else 8.dp.roundToPx()
+        layout(p.width, (p.height - gap).coerceAtLeast(0)) { p.place(0, 0) }
+    }
+    .drawBehind {
+        val x = badge.toPx() / 2
+        val w = 2.dp.toPx()
+        if (!last) drawLine(color, Offset(x, badge.toPx()), Offset(x, size.height + 8.dp.toPx()), strokeWidth = w, cap = StrokeCap.Butt)
+    }
 
 /** The name with the years in brackets, so two people with one name can be told apart. */
 private fun Person.nameWithYears(): String = if (years().isEmpty()) name else "$name (${years()})"

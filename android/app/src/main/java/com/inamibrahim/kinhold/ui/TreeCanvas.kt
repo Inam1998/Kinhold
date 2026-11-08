@@ -32,6 +32,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -276,6 +278,8 @@ fun TreeCanvas(
     val scope = rememberCoroutineScope()
     val avatars = LocalAvatars.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
+    val cakePainter = androidx.compose.ui.graphics.vector.rememberVectorPainter(AppIcons.Cake)
+    val candlePainter = androidx.compose.ui.graphics.vector.rememberVectorPainter(AppIcons.Candle)
     // Only a far jump (Find, Me) fades in, which is a change of the layer's opacity only, so it costs no redraw. The starting
     // opacity is set while the new layout is created, before its first draw: setting it in an effect let one frame of the
     // new tree show at full strength, then dim, which was the flash. A tap on a visible card never dims the tree at all.
@@ -375,9 +379,17 @@ fun TreeCanvas(
                 if (nodeScreenW >= 110f) {
                     val name = names.getOrPut(p.person.id) { measurer.measureLine(p.person.name, NameStyle) }
                     drawText(name, textColor, Offset(p.x + TEXT_LEFT, p.y + 15f))
-                    if (nodeScreenW >= 140f && p.person.years().isNotEmpty()) {
-                        val y = years.getOrPut(p.person.id) { measurer.measureLine(p.person.years(), YearsStyle) }
-                        drawText(y, mutedColor, Offset(p.x + TEXT_LEFT, p.y + 36f))
+                    val yt = if (nodeScreenW >= 140f) p.person.years() else ""
+                    if (yt.isNotEmpty()) {
+                        // A single known date starts with "b. " or "d. "; a small cake or candle takes its place.
+                        val lead = if (yt.startsWith("b. ")) cakePainter else if (yt.startsWith("d. ")) candlePainter else null
+                        val y = years.getOrPut(p.person.id) { measurer.measureLine(if (lead != null) yt.substring(3) else yt, YearsStyle) }
+                        if (lead != null) {
+                            with(lead) { translate(p.x + TEXT_LEFT, p.y + 36f) { draw(Size(12f, 12f), colorFilter = ColorFilter.tint(mutedColor)) } }
+                            drawText(y, mutedColor, Offset(p.x + TEXT_LEFT + 16f, p.y + 36f))
+                        } else {
+                            drawText(y, mutedColor, Offset(p.x + TEXT_LEFT, p.y + 36f))
+                        }
                     }
                 }
                 if (p.moreBelow > 0) {

@@ -126,6 +126,19 @@ object AppIcons {
         }
     }
 
+    /** Show on the tree: a tree with a leafy crown and branches. */
+    val Tree: ImageVector by lazy {
+        build("Tree") {
+            // A solid pine tree: three stacked layers on a trunk.
+            solid {
+                moveTo(12f, 2f); lineTo(17f, 9f); lineTo(14.8f, 9f); lineTo(19f, 15f); lineTo(13f, 15f)
+                lineTo(13f, 22f); lineTo(11f, 22f); lineTo(11f, 15f); lineTo(5f, 15f)
+                lineTo(9.2f, 9f); lineTo(7f, 9f)
+                close()
+            }
+        }
+    }
+
     /** How two people are related: three dots joined. */
     val Network: ImageVector by lazy {
         build("Network") {

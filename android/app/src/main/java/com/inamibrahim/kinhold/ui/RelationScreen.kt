@@ -39,7 +39,7 @@ import com.inamibrahim.kinhold.model.Relationships
 fun Relationship.sentence(a: String, b: String): String =
     if (english == "The same person") "$a and $b are the same person." else "$b is $a's ${english.replaceFirstChar(Char::lowercase)}."
 
-/** Pick any two people and see how they are related, in English and in the family words of Urdu and Punjabi. */
+/** Pick any two people and see how they are related, in English and, if chosen, in the family words of another language. */
 @Composable
 fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Unit) {
     var first by rememberSaveable { mutableIntStateOf(firstId) }
@@ -60,6 +60,13 @@ fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Un
             DialogButton("Swap them", { val t = first; first = second; second = t }, kind = ButtonKind.Neutral)
 
             AppCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Family words", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
+                    KinLanguageChoice()
+                }
+            }
+
+            AppCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (result == null) {
                         Text("The tree does not connect ${a.name} and ${b.name}.", style = MaterialTheme.typography.titleMedium, color = Palette.Text)
@@ -70,18 +77,23 @@ fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Un
                         )
                     } else {
                         Text(result.sentence(a.name, b.name), style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-                        result.local?.let {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                ToneIcon(Icons.Filled.Favorite, Tones.Rose, 32.dp)
-                                Column(Modifier.padding(start = 12.dp)) {
-                                    Text("In Urdu and Punjabi", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
-                                    Text(it, style = MaterialTheme.typography.titleMedium, color = Tones.Rose)
+                        AppSettings.kinLanguage?.let { lang ->
+                            val word = result.wordIn(lang)
+                            if (word != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    ToneIcon(Icons.Filled.Favorite, Tones.Rose, 32.dp)
+                                    Column(Modifier.padding(start = 12.dp)) {
+                                        Text("In ${lang.label}", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
+                                        Text(word, style = MaterialTheme.typography.titleMedium, color = Tones.Rose)
+                                    }
                                 }
+                            } else {
+                                Text("No ${lang.label} family word for this one, or the tree does not say enough (such as a parent's sex).", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                             }
                         }
                         if (result.path.size > 2) {
                             Text("Through", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted, modifier = Modifier.padding(top = 4.dp))
-                            Text(result.path.joinToString("  →  ") { it.name }, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+                            Text(result.pathNames().joinToString("  →  "), style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
                         }
                         Text(
                             if (result.blood) "A blood relation." else "A relation by marriage.",
@@ -104,6 +116,15 @@ fun RelationScreen(family: Family, firstId: Int, secondId: Int, onBack: () -> Un
     }
 }
 
+/** Off, or one language whose family words are shown beside the English relationship. The choice is saved on the phone. */
+@Composable
+fun KinLanguageChoice() {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Pill("English only", AppSettings.kinLanguage == null, { AppSettings.chooseKinLanguage(null) })
+        for (l in com.inamibrahim.kinhold.model.KinLanguage.entries) Pill(l.label, AppSettings.kinLanguage == l, { AppSettings.chooseKinLanguage(l) })
+    }
+}
+
 @Composable
 private fun PersonSlot(label: String, name: String, dates: String, onClick: () -> Unit) {
     AppCard(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable(onClick = onClick)) {
@@ -112,7 +133,7 @@ private fun PersonSlot(label: String, name: String, dates: String, onClick: () -
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
                 Text(name, style = MaterialTheme.typography.titleMedium, color = Palette.Text)
-                if (dates.isNotEmpty()) Text(dates, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                if (dates.isNotEmpty()) LifeText(dates, style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
             }
             Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = Palette.TextMuted)
         }

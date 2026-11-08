@@ -202,6 +202,8 @@ private fun KinholdContent(vm: KinholdViewModel) {
     val family by vm.family.collectAsState()
     var screen by rememberSaveable(stateSaver = ScreenSaver) { mutableStateOf<Screen>(if (vm.tourSeen) Screen.Tree else Screen.Tour) }
     var focusId by rememberSaveable { mutableIntStateOf(-1) }
+    // True when a person's Details page was opened from Upcoming dates, so Back returns there and not to the tree.
+    var personFromUpcoming by rememberSaveable { mutableStateOf(false) }
     // The person just deleted, offered for undo for a few seconds.
     var undo by remember { mutableStateOf<DeletedPerson?>(null) }
     // Set while asking who the other parent is for a child of someone with several spouses.
@@ -279,7 +281,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     // Buying is not built yet, so the Pro page is offered in debug builds only.
                     if (AppSettings.debuggable) MoreItem(AppIcons.Crown, Tones.Amber, "Kinhold Pro", "What Pro changes and what is always free") { screen = Screen.Pro } else null,
                     MoreItem(AppIcons.Backup, Tones.Mint, "Backup and sharing", "$status. Back up, share with a relative, open a file, GEDCOM") { screen = Screen.Backup },
-                    MoreItem(AppIcons.Network, Tones.Rose, "How are we related?", "Pick two people and see the relationship, with Urdu and Punjabi words") { if (family.size > 0) screen = relatedStart(family, firstFocus, focusId) },
+                    MoreItem(AppIcons.Network, Tones.Rose, "How are we related?", "Pick two people and see the relationship") { if (family.size > 0) screen = relatedStart(family, firstFocus, focusId) },
                     MoreItem(Icons.Filled.Notifications, Tones.Amber, "Upcoming dates", "Birthdays, anniversaries and remembrance days, with an optional reminder") { screen = Screen.Upcoming },
                     MoreItem(AppIcons.BarChart, Tones.Sky, "Tree statistics", "Counts, notable people, common surnames and places") { if (family.size > 0) screen = Screen.Stats },
                     MoreItem(Icons.Filled.Check, Tones.Teal, "Checks and duplicates", "Impossible dates, and people entered twice") { screen = Screen.Checks },
@@ -325,7 +327,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
         target is Screen.Upcoming -> {
             BackHandler { screen = Screen.More }
             val marriages by produceState<List<com.inamibrahim.kinhold.model.MarriageDate>?>(null, family) { value = vm.marriageDates() }
-            UpcomingScreen(family, marriages, onOpen = { id -> focusId = id; screen = Screen.Tree }, onBack = { screen = Screen.More })
+            UpcomingScreen(family, marriages, onOpen = { id -> personFromUpcoming = true; screen = Screen.Person(id) }, onBack = { screen = Screen.More })
         }
 
         target is Screen.Checks -> {
@@ -363,7 +365,8 @@ private fun KinholdContent(vm: KinholdViewModel) {
 
         target is Screen.Person -> {
             val shown = (target as Screen.Person).id
-            BackHandler { screen = Screen.Tree }
+            val personBack: Screen = if (personFromUpcoming) Screen.Upcoming else Screen.Tree
+            BackHandler { screen = personBack }
             if (shown in family) {
                 PersonPageScreen(
                     family = family,
@@ -373,7 +376,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                     listState = scrolls.lazy("person"),
                     vm = vm,
                     onShare = { screen = Screen.Share(shown) },
-                    onBack = { screen = Screen.Tree },
+                    onBack = { screen = personBack },
                 )
             } else {
                 screen = Screen.Tree
@@ -439,6 +442,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
                         null
                     },
                     onCancel = { screen = backTo },
+                    onAutoSave = if (editing != null) ({ d, p, det, done -> vm.update(editing.id, d, p, det, done) }) else null,
                     scroll = scrolls.scroll("form"),
                     referencePin = remember(family) { family.people.firstNotNullOfOrNull { p -> if (p.lat != null && p.lng != null) com.inamibrahim.kinhold.model.GeoPin(p.lat, p.lng) else null } },
                 )
@@ -488,6 +492,7 @@ private fun KinholdContent(vm: KinholdViewModel) {
             },
             onDetails = {
                 undo = null
+                personFromUpcoming = false
                 screen = Screen.Person(it)
             },
             onEdit = {

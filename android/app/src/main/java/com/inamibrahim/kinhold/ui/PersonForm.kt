@@ -17,18 +17,26 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -96,6 +104,8 @@ fun PersonFormScreen(
     onCancel: () -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
     referencePin: GeoPin? = null,
+    /** When set (editing an existing person), changes are saved on their own a moment after the last edit; the callback runs when the save is done. */
+    onAutoSave: ((PersonDraft, PhotoChange, PersonDetails, () -> Unit) -> Unit)? = null,
 ) {
     // A picked photo is only prepared here; it is stored when Save is pressed. It is not kept across rotation.
     var photo by remember { mutableStateOf<PhotoChange>(PhotoChange.Keep) }
@@ -103,6 +113,8 @@ fun PersonFormScreen(
     var preparing by remember { mutableStateOf(false) }
     // A new picture is shown in a crop step first; nothing is kept until Use this is pressed.
     var cropping by remember { mutableStateOf<com.inamibrahim.kinhold.data.PreparedPhoto?>(null) }
+    // The last picture chosen in this form, kept so it can be moved and zoomed again after autosave has stored it.
+    var croppable by remember { mutableStateOf<com.inamibrahim.kinhold.data.PreparedPhoto?>(null) }
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -224,7 +236,44 @@ fun PersonFormScreen(
 
     BackHandler(enabled = editingEvent.isNotEmpty()) { editingEvent = "" }
 
+    // ---- Saving on its own (existing people only). Everything typed is compared with what was last stored; a moment after the last
+    // change the person is saved, and the status pill under the title says where things stand. Leaving the form saves what is pending.
+    val autoSaving = isEditing && onAutoSave != null
+    fun cleaned() = details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank })
+    fun photoTag(p: PhotoChange) = when (p) { is PhotoChange.Set -> "set"; PhotoChange.Remove -> "remove"; PhotoChange.Keep -> "keep" }
+    fun keyWith(photoTag: String) = listOf<Any?>(
+        given, surname, sex, born, bornMonth, bornDay, died, diedMonth, diedDay, bornQual, diedQual,
+        address, phone, email, pinText, birthPlace, deathPlace, notes, detailsJson, photoTag,
+    ).joinToString("\u0001")
+    val formKey = keyWith(photoTag(photo))
+    var savedKey by remember { mutableStateOf(formKey) }
+    var saveState by remember { mutableStateOf(SaveState.Saved) }
+    var savedPulse by remember { mutableStateOf(0) }
+    var finished by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(formKey) {
+        if (!autoSaving || finished) return@LaunchedEffect
+        if (formKey == savedKey) { saveState = SaveState.Saved; return@LaunchedEffect }
+        if (problem != null) { saveState = SaveState.Blocked; return@LaunchedEffect }
+        saveState = SaveState.Pending
+        kotlinx.coroutines.delay(900)
+        saveState = SaveState.Saving
+        val sentKey = formKey
+        val sentPhoto = photo
+        val keyAfterPhoto = keyWith("keep")
+        onAutoSave?.invoke(draft, photo, cleaned()) {
+            // A stored photo is now the person's own, so the picked one is dropped and the form is not "changed" by that.
+            if (sentPhoto !is PhotoChange.Keep && photo === sentPhoto) { photo = PhotoChange.Keep; savedKey = keyAfterPhoto } else savedKey = sentKey
+            saveState = SaveState.Saved
+            savedPulse += 1
+        }
+    }
+    val flushPending by androidx.compose.runtime.rememberUpdatedState({
+        if (autoSaving && !finished && problem == null && formKey != savedKey) onAutoSave?.invoke(draft, photo, cleaned()) {}
+    })
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { flushPending() } }
+
     // Opening an event slides the editor in; Save, Remove or Back slide the form back, scrolled where it was.
+    Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = editingEvent,
         modifier = Modifier.fillMaxSize().background(Palette.Background),
@@ -274,9 +323,11 @@ fun PersonFormScreen(
                 ) {
                     ScreenHeader(
                         if (isEditing) "Person" else "New person", title, Modifier.padding(top = 12.dp, bottom = 6.dp),
-                        trailing = {
-                            DialogButton("Save", { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) }, kind = ButtonKind.Primary, enabled = problem == null && !preparing, icon = Icons.Filled.Check)
-                        },
+                        // An existing person saves by itself, so there is no Save button, only a way back. A new person still needs Save.
+                        onBack = if (autoSaving) onCancel else null,
+                        trailing = if (autoSaving) null else ({
+                            DialogButton("Save", { finished = true; onSave(draft, photo, cleaned(), linkKind) }, kind = ButtonKind.Primary, enabled = problem == null && !preparing, icon = Icons.Filled.Check)
+                        }),
                     )
 
                     FormCard("Who they are", Icons.Filled.Person, Tones.Violet) {
@@ -291,15 +342,16 @@ fun PersonFormScreen(
                                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     IconAction(AppIcons.Gallery, if (hasPhoto) "Choose a different photo from the gallery" else "Choose a photo from the gallery", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
                                     IconAction(AppIcons.Camera, "Take a photo with the camera", { val p = CameraShot.prepare(appContext); shot = p; camera.launch(p.uri) })
-                                    (photo as? PhotoChange.Set)?.let { set -> IconAction(AppIcons.Crop, "Move and zoom the photo", { cropping = set.photo }) }
-                                    if (hasPhoto) IconAction(Icons.Filled.Delete, "Remove the photo", { photo = PhotoChange.Remove }, danger = true)
+                                    // The crop button stays while this form is open, even after autosave has stored the picture.
+                                    croppable?.let { c -> if (hasPhoto) IconAction(AppIcons.Crop, "Move and zoom the photo", { cropping = c }) }
+                                    if (hasPhoto) IconAction(Icons.Filled.Delete, "Remove the photo", { photo = PhotoChange.Remove; croppable = null }, danger = true)
                                 }
                             }
                         }
                         if (preparing) {
                             Text("Preparing the photo…", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))
                         }
-                        cropping?.let { raw -> PhotoCropDialog(raw, { photo = PhotoChange.Set(it); cropping = null }, { cropping = null }) }
+                        cropping?.let { raw -> PhotoCropDialog(raw, { photo = PhotoChange.Set(it); croppable = it; cropping = null }, { cropping = null }) }
                         photoError?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Danger, modifier = Modifier.padding(start = 4.dp))
                         }
@@ -432,16 +484,30 @@ fun PersonFormScreen(
                     }
                     FormActions(
                         "Save",
-                        { onSave(draft, photo, details.copy(sources = details.sources.filter { !it.isBlank }, fields = details.fields.filter { !it.isBlank }), linkKind) },
+                        { finished = true; onSave(draft, photo, cleaned(), linkKind) },
                         problem == null && !preparing,
                         onCancel,
                         "Delete this person",
                         if (onDelete != null) ({ confirmDelete = true }) else null,
+                        cancelLabel = if (autoSaving) "Close" else "Cancel",
+                        showSave = !autoSaving,
                     )
                     Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 24.dp))
                 }
             }
         }
+    }
+    if (autoSaving) {
+        // A few words for the small pill; the full sentence stays at the bottom of the form.
+        val shortProblem = when {
+            !draft.hasName -> "add a name"
+            pinText.isNotBlank() && pin == null -> "map pin is not a location"
+            !draft.datesAreReal -> "a date is not real"
+            !draft.datesMakeSense -> "death is before birth"
+            else -> null
+        }
+        SaveIndicator(saveState, savedPulse, shortProblem)
+    }
     }
 
     if (confirmDelete && onDelete != null) {
@@ -460,10 +526,68 @@ fun PersonFormScreen(
             confirmButton = {
                 DialogButtons {
                     DialogButton("Keep", { confirmDelete = false }, kind = ButtonKind.Neutral)
-                    DialogButton("Delete", { confirmDelete = false; onDelete() }, kind = ButtonKind.Danger)
+                    DialogButton("Delete", { confirmDelete = false; finished = true; onDelete() }, kind = ButtonKind.Danger)
                 }
             },
         )
+    }
+}
+
+private enum class SaveState { Saved, Pending, Saving, Blocked }
+
+/**
+ * A very small sign that a change was stored: a round check that fades in at the top of the screen after a save and fades out after about
+ * a second. Saves that follow each other just keep it lit, so fast typing never makes it flash. Nothing shows while saving or waiting, since
+ * that takes a moment. Only when saving is held back by a problem does a short pill with the reason stay up.
+ */
+private fun Modifier.androidx_shadow(): Modifier = this.shadow(8.dp, RoundedCornerShape(50))
+
+@Composable
+private fun BoxScope.SaveIndicator(state: SaveState, pulse: Int, problem: String?) {
+    var recentlySaved by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(pulse) {
+        if (pulse > 0) {
+            recentlySaved = true
+            kotlinx.coroutines.delay(1700)
+            recentlySaved = false
+        }
+    }
+    val blocked = state == SaveState.Blocked
+    androidx.compose.animation.AnimatedVisibility(
+        visible = blocked || recentlySaved,
+        modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.statusBars).padding(top = 16.dp, start = 24.dp, end = 24.dp),
+        enter = androidx.compose.animation.fadeIn(tween(160)) + androidx.compose.animation.slideInVertically(tween(220)) { -it / 2 } + androidx.compose.animation.scaleIn(tween(220), initialScale = 0.85f),
+        exit = androidx.compose.animation.fadeOut(tween(400)) + androidx.compose.animation.slideOutVertically(tween(400)) { -it / 2 },
+    ) {
+        if (blocked) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Palette.Surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                androidx.compose.material3.Icon(Icons.Filled.Info, contentDescription = null, tint = Tones.Amber, modifier = Modifier.size(14.dp))
+                Text("Not saved: ${problem ?: "check the form"}", style = MaterialTheme.typography.labelMedium, color = Tones.Amber)
+            }
+        } else {
+            // A solid green pill with a shadow, so it stands out on the dark and the light theme alike, yet is gone in under two seconds.
+            Row(
+                Modifier
+                    .androidx_shadow()
+                    .clip(RoundedCornerShape(50))
+                    .background(Tones.Mint)
+                    .padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp)
+                    .semantics { contentDescription = "Saved"; liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                androidx.compose.material3.Icon(Icons.Filled.Check, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF062B20), modifier = Modifier.size(18.dp))
+                Text("Saved", style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color(0xFF062B20))
+            }
+        }
     }
 }
 
@@ -484,7 +608,19 @@ internal fun Field(
     hidden: Boolean = false,
     placeholder: String = "",
     labelHidden: Boolean = false,
+    /** Puts the cursor in the box as soon as it appears and opens the keyboard, for search boxes in pop-ups. */
+    autoFocus: Boolean = false,
 ) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    if (autoFocus) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            // A pop-up window needs a moment before it can take focus.
+            kotlinx.coroutines.delay(150)
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     Column(modifier) {
         if (!labelHidden) Label(label, Modifier.padding(bottom = 6.dp))
         BasicTextField(
@@ -499,7 +635,7 @@ internal fun Field(
                 keyboardType = keyboardType,
                 capitalization = if (keyboardType == KeyboardType.Text) KeyboardCapitalization.Words else KeyboardCapitalization.None,
             ),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().let { if (autoFocus) it.focusRequester(focus) else it },
             decorationBox = { inner ->
                 Box(
                     Modifier

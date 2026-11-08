@@ -134,7 +134,7 @@ fun HelpScreen(listScroll: ScrollState, onClose: () -> Unit) {
             ) {
                 if (page == null) {
                     ScreenHeader("Kinhold", "Help", Modifier.padding(top = 12.dp, bottom = 16.dp), onBack = onClose)
-                    Field("Search the guide", query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 16.dp))
+                    Field("Search the guide", query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 16.dp), placeholder = "Type a word, such as backup or photo")
                     val results = remember(query) { search(query) }
                     if (results.isEmpty()) {
                         Text("Nothing in the guide mentions \"${query.trim()}\".", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted, modifier = Modifier.padding(start = 4.dp))

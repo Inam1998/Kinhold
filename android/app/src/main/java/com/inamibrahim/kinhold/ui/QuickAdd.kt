@@ -109,9 +109,9 @@ fun QuickAddDialog(family: Family, personId: Int, suggest: (Relation) -> PersonD
                 Text("Sex", style = androidx.compose.material3.MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
                 EqualRow(3) {
                     val shownSex = k?.let { sexOf(suggest(relation() ?: Relation.SpouseOf(personId)).sex) } ?: Sex.Unknown
-                    Pill("Male", shownSex == Sex.Male, { sexKey = Sex.Male.name }, Modifier.weight(1f), icon = AppIcons.Male, small = true)
+                    Pill("Male", shownSex == Sex.Male, { sexKey = Sex.Male.name }, Modifier.weight(0.85f), icon = AppIcons.Male, small = true)
                     Pill("Female", shownSex == Sex.Female, { sexKey = Sex.Female.name }, Modifier.weight(1f), icon = AppIcons.Female, small = true)
-                    Pill("Not stated", shownSex == Sex.Unknown, { sexKey = Sex.Unknown.name }, Modifier.weight(1f), icon = AppIcons.Unknown, small = true)
+                    Pill("Not stated", shownSex == Sex.Unknown, { sexKey = Sex.Unknown.name }, Modifier.weight(1.35f), icon = AppIcons.Unknown, small = true)
                 }
                 Row(verticalAlignment = androidx.compose.ui.Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ToneIcon(Icons.Filled.Person, k?.tone() ?: Palette.TextMuted, 44.dp, Modifier.padding(bottom = 3.dp))
@@ -127,7 +127,7 @@ fun QuickAddDialog(family: Family, personId: Int, suggest: (Relation) -> PersonD
         },
         confirmButton = {
             DialogButtons {
-                DialogButton("Done", onClose, kind = ButtonKind.Neutral)
+                DialogButton(if (added.isEmpty()) "Cancel" else "Done", onClose, kind = ButtonKind.Neutral)
                 DialogButton(
                     "Add",
                     {

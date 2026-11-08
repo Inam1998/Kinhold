@@ -81,7 +81,7 @@ fun PhoneField(value: String, onChange: (String) -> Unit, modifier: Modifier = M
             title = { Text("Country code", color = Palette.Text) },
             text = {
                 Column {
-                    Field("", query, { query = it }, Modifier.fillMaxWidth(), placeholder = "Search a country or code", labelHidden = true)
+                    Field("", query, { query = it }, Modifier.fillMaxWidth(), placeholder = "Search a country or code", labelHidden = true, autoFocus = true)
                     LazyColumn(Modifier.heightIn(max = 340.dp).padding(top = 8.dp)) {
                         items(list, key = { it.iso }) { c ->
                             Row(

@@ -15,12 +15,21 @@ object AppSettings {
     private const val KEY_ACCENT = "accent"
 
     /** Whether the Hijri equivalent is shown beside full dates. */
-    var showHijri by mutableStateOf(true)
+    var showHijri by mutableStateOf(false)
         private set
 
     fun chooseShowHijri(value: Boolean) {
         showHijri = value
         context?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putBoolean("show_hijri", value)?.apply()
+    }
+
+    /** The language whose family words (chacha, tio, amca ...) are shown beside a relationship, or null for English only. */
+    var kinLanguage by mutableStateOf<com.inamibrahim.kinhold.model.KinLanguage?>(null)
+        private set
+
+    fun chooseKinLanguage(value: com.inamibrahim.kinhold.model.KinLanguage?) {
+        kinLanguage = value
+        context?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putString("kin_language", value?.key ?: "")?.apply()
     }
 
     /** True in a debug build only. Ad placeholders and the developer Pro switch exist only there until a real ad service and billing are added. */
@@ -48,7 +57,8 @@ object AppSettings {
         context = appContext.applicationContext
         val prefs = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         mode = ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_MODE, null) } ?: ThemeMode.Dark
-        showHijri = prefs.getBoolean("show_hijri", true)
+        showHijri = prefs.getBoolean("show_hijri", false)
+        kinLanguage = com.inamibrahim.kinhold.model.KinLanguage.fromKey(prefs.getString("kin_language", null))
         debuggable = (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         proUnlocked = debuggable && prefs.getBoolean("pro_unlocked", false)
         Palette.accent = AccentChoice.entries.firstOrNull { it.name == prefs.getString(KEY_ACCENT, null) } ?: AccentChoice.Green
